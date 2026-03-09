@@ -19,7 +19,7 @@
 		88F740682F5E514E00B89817 /* Exceptions for "NSG" folder in "NSG" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Resources/Info.plist,
+				Info.plist,
 			);
 			target = 88F740552F5E514C00B89817 /* NSG */;
 		};

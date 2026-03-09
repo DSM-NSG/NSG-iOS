@@ -6,14 +6,37 @@
 //
 
 import UIKit
+import Then
+import SnapKit
 
-class ViewController: UIViewController {
+class SplashViewController: UIViewController {
+
+    let logoImage = UIImageView().then {
+        $0.image = UIImage(named: "logo")
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .red
+
+        addView()
+        setLayout()
+        configuration()
+        
     }
 
+    private func addView()  {
+        view.addSubview(logoImage)
+    }
+
+    private func setLayout() {
+        logoImage.snp.makeConstraints {
+            $0.center.equalToSuperview()
+        }
+    }
+
+    private func configuration() {
+        view.backgroundColor = .background
+    }
 
 }
 
