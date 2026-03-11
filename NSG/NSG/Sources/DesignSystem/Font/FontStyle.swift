@@ -4,10 +4,11 @@
 //
 //  Created by hawon on 3/9/26.
 //
-import SwiftUI
+import UIKit
 
 
 enum FontStyle {
+    case header1
     case header2
     case header3
     case header4
@@ -17,29 +18,31 @@ enum FontStyle {
     case body3
     case body4
 
-    var font: Font {
+    var font: UIFont {
             switch self {
+            case .header1:
+                return UIFont(name: "LINESeedSansKR-Bold", size: 20) ?? UIFont.systemFont(ofSize: 100)
             case .header2:
-                return .custom("LINESeedSansKR-Bold", size: 16)
+                return UIFont(name: "LINESeedSansKR-Bold", size: 16) ?? UIFont.systemFont(ofSize: 100)
             case .header3:
-                return .custom("LINESeedSansKR-Bold", size: 14)
+                return UIFont(name: "LINESeedSansKR-Bold", size: 14) ?? UIFont.systemFont(ofSize: 100)
             case .header4:
-                return .custom("LINESeedSansKR-Bold", size: 12)
+                return UIFont(name: "LINESeedSansKR-Bold", size: 12) ?? UIFont.systemFont(ofSize: 100)
 
             case .body1:
-                return .custom("LINESeedSansKR-Regular", size: 16)
+                return UIFont(name: "LINESeedSansKR-Regular", size: 16) ?? UIFont.systemFont(ofSize: 100)
             case .body2:
-                return .custom("LINESeedSansKR-Regular", size: 14)
+                return UIFont(name: "LINESeedSansKR-Regular", size: 14) ?? UIFont.systemFont(ofSize: 100)
             case .body3:
-                return .custom("LINESeedSansKR-Regular", size: 12)
+                return UIFont(name: "LINESeedSansKR-Regular", size: 12) ?? UIFont.systemFont(ofSize: 100)
             case .body4:
-                return .custom("LINESeedSansKR-Regular", size: 8)
+                return UIFont(name: "LINESeedSansKR-Regular", size: 8) ?? UIFont.systemFont(ofSize: 100)
             }
         }
 }
 
-extension Font {
-    static func style(_ style: FontStyle) -> Font {
+extension UIFont {
+    static func style(_ style: FontStyle) -> UIFont {
         style.font
     }
 }
