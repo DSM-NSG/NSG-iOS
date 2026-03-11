@@ -45,7 +45,12 @@ class SplashViewController: UIViewController {
 
     private func configuration() {
         view.backgroundColor = .background
+        loginButton.addTarget(self, action: #selector(loginButtonDidTap), for: .touchUpInside)
+    }
+
+    @objc private func loginButtonDidTap() {
+        let vc = LoginViewController()
+        navigationController?.pushViewController(vc, animated: true)
     }
 
 }
-
