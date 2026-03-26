@@ -29,7 +29,7 @@ final class TabbarViewController: UITabBarController {
             imageName: "tabbarLocation"
         )
         let comment = makeNav(
-            root: CommentViewController(),
+            root: TipSeletedViewController(),
             title: "작성",
             imageName: "tabbarComent"
         )
@@ -57,7 +57,6 @@ final class TabbarViewController: UITabBarController {
         title: String,
         imageName: String
     ) -> UIViewController {
-        root.title = title
         let nav = UINavigationController(rootViewController: root)
         nav.tabBarItem = UITabBarItem(
             title: title,
@@ -65,59 +64,5 @@ final class TabbarViewController: UITabBarController {
             selectedImage: UIImage(named: imageName)?.withRenderingMode(.alwaysTemplate)
         )
         return nav
-    }
-}
-private final class LocationViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .background
-        setCenterLabel(text: "지도")
-    }
-}
-
-private final class CommentViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .background
-        setCenterLabel(text: "작성")
-    }
-}
-
-private final class ShareViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .background
-        setCenterLabel(text: "공유")
-    }
-}
-
-private final class MajorViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .background
-        setCenterLabel(text: "전공")
-    }
-}
-
-private final class MyViewController: UIViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .background
-        setCenterLabel(text: "마이페이지")
-    }
-}
-
-private extension UIViewController {
-    func setCenterLabel(text: String) {
-        let label = UILabel()
-        label.text = text
-        label.textColor = .black900
-        label.font = .style(.header2)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: view.centerYAnchor)
-        ])
     }
 }
