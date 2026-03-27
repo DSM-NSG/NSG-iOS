@@ -92,23 +92,40 @@ final class ShareViewController: UIViewController {
         $0.distribution = .fillProportionally
     }
 
-    private let popularScrollView = UIScrollView().then {
+    private let popularCollectionView = UICollectionView(
+        frame: .zero,
+        collectionViewLayout: {
+            let layout = UICollectionViewFlowLayout()
+            layout.scrollDirection = .horizontal
+            layout.minimumLineSpacing = 12
+            layout.minimumInteritemSpacing = 12
+            layout.itemSize = CGSize(width: 144, height: 140)
+            return layout
+        }()
+    ).then {
+        $0.backgroundColor = .clear
         $0.showsHorizontalScrollIndicator = false
+        $0.contentInset = UIEdgeInsets(top: 0, left: 24, bottom: 0, right: 24)
     }
 
-    private let popularStackView = UIStackView().then {
-        $0.axis = .horizontal
-        $0.spacing = 12
-        $0.alignment = .fill
-    }
-
-    private let latestStackView = UIStackView().then {
-        $0.axis = .vertical
-        $0.spacing = 12
-        $0.alignment = .fill
+    private let latestCollectionView = UICollectionView(
+        frame: .zero,
+        collectionViewLayout: {
+            let layout = UICollectionViewFlowLayout()
+            layout.scrollDirection = .vertical
+            layout.minimumLineSpacing = 10
+            layout.minimumInteritemSpacing = 0
+            layout.itemSize = CGSize(width: UIScreen.main.bounds.width - 48, height: 100)
+            return layout
+        }()
+    ).then {
+        $0.backgroundColor = .clear
+        $0.showsVerticalScrollIndicator = false
+        $0.isScrollEnabled = false
     }
 
     private var categoryButtons: [CategoryChipButton] = []
+    private var latestCollectionHeightConstraint: Constraint?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -117,6 +134,11 @@ final class ShareViewController: UIViewController {
         setLayout()
         configureUI()
         bindContent()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        latestCollectionHeightConstraint?.update(offset: latestCollectionView.collectionViewLayout.collectionViewContentSize.height)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -142,13 +164,11 @@ final class ShareViewController: UIViewController {
             categoryStackView,
             popularTitleLabel,
             popularMoreLabel,
-            popularScrollView,
+            popularCollectionView,
             latestTitleLabel,
             latestMoreLabel,
-            latestStackView
+            latestCollectionView
         ].forEach { contentView.addSubview($0) }
-
-        popularScrollView.addSubview(popularStackView)
     }
 
     private func setLayout() {
@@ -204,19 +224,14 @@ final class ShareViewController: UIViewController {
             $0.centerY.equalTo(popularTitleLabel)
         }
 
-        popularScrollView.snp.makeConstraints {
+        popularCollectionView.snp.makeConstraints {
             $0.top.equalTo(popularTitleLabel.snp.bottom).offset(16)
             $0.leading.trailing.equalToSuperview()
             $0.height.equalTo(140)
         }
 
-        popularStackView.snp.makeConstraints {
-            $0.edges.equalToSuperview().inset(UIEdgeInsets(top: 0, left: 24, bottom: 0, right: 24))
-            $0.height.equalToSuperview()
-        }
-
         latestTitleLabel.snp.makeConstraints {
-            $0.top.equalTo(popularScrollView.snp.bottom).offset(30)
+            $0.top.equalTo(popularCollectionView.snp.bottom).offset(30)
             $0.leading.equalToSuperview().offset(24)
         }
 
@@ -225,15 +240,22 @@ final class ShareViewController: UIViewController {
             $0.centerY.equalTo(latestTitleLabel)
         }
 
-        latestStackView.snp.makeConstraints {
+        latestCollectionView.snp.makeConstraints {
             $0.top.equalTo(latestTitleLabel.snp.bottom).offset(16)
             $0.leading.trailing.equalToSuperview().inset(24)
             $0.bottom.equalToSuperview().inset(24)
+            latestCollectionHeightConstraint = $0.height.equalTo(0).constraint
         }
     }
 
     private func configureUI() {
         view.backgroundColor = .background
+        popularCollectionView.delegate = self
+        popularCollectionView.dataSource = self
+        popularCollectionView.register(PopularPostCell.self, forCellWithReuseIdentifier: PopularPostCell.identifier)
+        latestCollectionView.delegate = self
+        latestCollectionView.dataSource = self
+        latestCollectionView.register(LatestPostCell.self, forCellWithReuseIdentifier: LatestPostCell.identifier)
     }
 
     private func bindContent() {
@@ -244,14 +266,9 @@ final class ShareViewController: UIViewController {
         }
 
         categoryButtons.forEach { categoryStackView.addArrangedSubview($0) }
-
-        popularPosts
-            .map { PopularPostCardView(post: $0) }
-            .forEach { popularStackView.addArrangedSubview($0) }
-
-        latestPosts
-            .map { LatestPostCardView(post: $0) }
-            .forEach { latestStackView.addArrangedSubview($0) }
+        latestCollectionView.reloadData()
+        latestCollectionView.layoutIfNeeded()
+        latestCollectionHeightConstraint?.update(offset: latestCollectionView.collectionViewLayout.collectionViewContentSize.height)
     }
 
     @objc
@@ -262,5 +279,35 @@ final class ShareViewController: UIViewController {
         categoryButtons.forEach { button in
             button.isSelected = button.chipTitle == selectedCategory
         }
+    }
+}
+
+extension ShareViewController: UICollectionViewDataSource, UICollectionViewDelegate {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        collectionView == popularCollectionView ? popularPosts.count : latestPosts.count
+    }
+
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        if collectionView == popularCollectionView {
+            guard let cell = collectionView.dequeueReusableCell(
+                withReuseIdentifier: PopularPostCell.identifier,
+                for: indexPath
+            ) as? PopularPostCell else {
+                return UICollectionViewCell()
+            }
+
+            cell.configure(with: popularPosts[indexPath.item])
+            return cell
+        }
+
+        guard let cell = collectionView.dequeueReusableCell(
+            withReuseIdentifier: LatestPostCell.identifier,
+            for: indexPath
+        ) as? LatestPostCell else {
+            return UICollectionViewCell()
+        }
+
+        cell.configure(with: latestPosts[indexPath.item])
+        return cell
     }
 }
