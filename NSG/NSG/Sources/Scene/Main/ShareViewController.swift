@@ -11,7 +11,6 @@ import Then
 final class ShareViewController: UIViewController {
 
     private var selectedCategory: String?
-    private let categories = ["장소", "기숙사", "대마고", "기타"]
 
     private let popularPosts = [
         SharePost(category: "기숙사", title: "화장실 변기가 막혔...", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다~~~ 변기를 잘 뚫는 법 ~!! 깨알호..."),
@@ -85,12 +84,7 @@ final class ShareViewController: UIViewController {
         $0.tintColor = .orange400
     }
 
-    private let categoryStackView = UIStackView().then {
-        $0.axis = .horizontal
-        $0.spacing = 8
-        $0.alignment = .fill
-        $0.distribution = .fillProportionally
-    }
+    private let categoryFilterView = CategoryFilterView()
 
     private let popularCollectionView = UICollectionView(
         frame: .zero,
@@ -124,7 +118,6 @@ final class ShareViewController: UIViewController {
         $0.isScrollEnabled = false
     }
 
-    private var categoryButtons: [CategoryChipButton] = []
     private var latestCollectionHeightConstraint: Constraint?
 
     override func viewDidLoad() {
@@ -151,7 +144,7 @@ final class ShareViewController: UIViewController {
             classLabel,
             screenTitleLabel,
             searchButton,
-            categoryStackView,
+            categoryFilterView,
             popularTitleLabel,
             popularMoreLabel,
             popularCollectionView,
@@ -199,13 +192,13 @@ final class ShareViewController: UIViewController {
             $0.size.equalTo(24)
         }
 
-        categoryStackView.snp.makeConstraints {
+        categoryFilterView.snp.makeConstraints {
             $0.top.equalTo(screenTitleLabel.snp.bottom).offset(22)
             $0.leading.equalToSuperview().offset(24)
         }
 
         popularTitleLabel.snp.makeConstraints {
-            $0.top.equalTo(categoryStackView.snp.bottom).offset(30)
+            $0.top.equalTo(categoryFilterView.snp.bottom).offset(30)
             $0.leading.equalToSuperview().offset(24)
         }
 
@@ -240,6 +233,8 @@ final class ShareViewController: UIViewController {
 
     private func configureUI() {
         view.backgroundColor = .background
+        popularMoreLabel.isUserInteractionEnabled = true
+        latestMoreLabel.isUserInteractionEnabled = true
         searchButton.addTarget(self, action: #selector(didTapSearchButton), for: .touchUpInside)
         popularCollectionView.delegate = self
         popularCollectionView.dataSource = self
@@ -247,35 +242,41 @@ final class ShareViewController: UIViewController {
         latestCollectionView.delegate = self
         latestCollectionView.dataSource = self
         latestCollectionView.register(LatestPostCell.self, forCellWithReuseIdentifier: LatestPostCell.identifier)
+
+        popularMoreLabel.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(didTapPopularMoreLabel))
+        )
+        latestMoreLabel.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(didTapLatestMoreLabel))
+        )
+
+        categoryFilterView.onSelectCategory = { [weak self] category in
+            self?.selectedCategory = category
+        }
     }
 
     private func bindContent() {
-        categoryButtons = categories.map { category in
-            let button = CategoryChipButton(title: category)
-            button.addTarget(self, action: #selector(didTapCategoryButton(_:)), for: .touchUpInside)
-            return button
-        }
-
-        categoryButtons.forEach { categoryStackView.addArrangedSubview($0) }
         latestCollectionView.reloadData()
         latestCollectionView.layoutIfNeeded()
         latestCollectionHeightConstraint?.update(offset: latestCollectionView.collectionViewLayout.collectionViewContentSize.height)
     }
 
     @objc
-    private func didTapCategoryButton(_ sender: CategoryChipButton) {
-        let tappedTitle = sender.chipTitle
-        selectedCategory = selectedCategory == tappedTitle ? nil : tappedTitle
-
-        categoryButtons.forEach { button in
-            button.isSelected = button.chipTitle == selectedCategory
-        }
-    }
-
-    @objc
     private func didTapSearchButton() {
         let searchViewController = SearchViewController()
         navigationController?.pushViewController(searchViewController, animated: true)
+    }
+
+    @objc
+    private func didTapPopularMoreLabel() {
+        let totalPostViewController = TotalPostViewController(title: "인기글", posts: popularPosts)
+        navigationController?.pushViewController(totalPostViewController, animated: true)
+    }
+
+    @objc
+    private func didTapLatestMoreLabel() {
+        let totalPostViewController = TotalPostViewController(title: "최신글", posts: latestPosts)
+        navigationController?.pushViewController(totalPostViewController, animated: true)
     }
 }
 

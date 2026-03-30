@@ -10,7 +10,6 @@ import Then
 
 final class SearchViewController: UIViewController {
 
-    private let categories = ["장소", "기숙사", "대마고", "기타"]
     private let allPosts = [
         SharePost(category: "장소", title: "학교에서 몰래 탈출하는 법", content: "학교 정문 말고도 빠르게 나갈 수 있는 타이밍을 정리해봤어요."),
         SharePost(category: "기숙사", title: "학교 기숙사에서 몰래 배달 시켜먹는 방법", content: "기숙사에서 눈치 안 보고 배달 받는 루트를 공유합니다."),
@@ -24,13 +23,7 @@ final class SearchViewController: UIViewController {
 
     private let searchInputView = SearchInputView()
     private let autoCompleteView = SearchAutoCompleteView()
-
-    private let categoryStackView = UIStackView().then {
-        $0.axis = .horizontal
-        $0.spacing = 8
-        $0.alignment = .fill
-        $0.distribution = .fillProportionally
-    }
+    private let categoryFilterView = CategoryFilterView()
 
     private let resultCollectionView = UICollectionView(
         frame: .zero,
@@ -49,7 +42,6 @@ final class SearchViewController: UIViewController {
         $0.keyboardDismissMode = .onDrag
     }
 
-    private var categoryButtons: [CategoryChipButton] = []
     private var selectedCategory: String?
     private var filteredResults: [String] = []
     private var filteredPosts: [SharePost] = []
@@ -84,7 +76,7 @@ final class SearchViewController: UIViewController {
         [
             searchInputView,
             autoCompleteView,
-            categoryStackView,
+            categoryFilterView,
             resultCollectionView
         ].forEach { view.addSubview($0) }
     }
@@ -102,14 +94,14 @@ final class SearchViewController: UIViewController {
             $0.height.equalTo(150)
         }
 
-        categoryStackView.snp.makeConstraints {
+        categoryFilterView.snp.makeConstraints {
             $0.top.equalTo(searchInputView.snp.bottom).offset(16)
             $0.leading.equalToSuperview().offset(24)
             $0.trailing.lessThanOrEqualToSuperview().inset(24)
         }
 
         resultCollectionView.snp.makeConstraints {
-            $0.top.equalTo(categoryStackView.snp.bottom).offset(10)
+            $0.top.equalTo(categoryFilterView.snp.bottom).offset(10)
             $0.leading.trailing.equalToSuperview().inset(24)
             $0.bottom.equalTo(view.safeAreaLayoutGuide).inset(12)
         }
@@ -139,17 +131,15 @@ final class SearchViewController: UIViewController {
         searchInputView.onTextChanged = { [weak self] text in
             self?.didChangeSearchTextField(text: text)
         }
+
+        categoryFilterView.onSelectCategory = { [weak self] category in
+            self?.selectedCategory = category
+            self?.applyPostFiltering(with: self?.searchInputView.currentText.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+        }
     }
 
     private func bindContent() {
         filteredPosts = allPosts
-        categoryButtons = categories.map { category in
-            let button = CategoryChipButton(title: category)
-            button.addTarget(self, action: #selector(didTapCategoryButton(_:)), for: .touchUpInside)
-            return button
-        }
-
-        categoryButtons.forEach { categoryStackView.addArrangedSubview($0) }
         resultCollectionView.reloadData()
     }
 
@@ -175,17 +165,6 @@ final class SearchViewController: UIViewController {
 
         autoCompleteView.update(results: filteredResults, keyword: keyword)
         updateAutoCompleteVisibility()
-    }
-
-    @objc
-    private func didTapCategoryButton(_ sender: CategoryChipButton) {
-        selectedCategory = selectedCategory == sender.chipTitle ? nil : sender.chipTitle
-
-        categoryButtons.forEach { button in
-            button.isSelected = button.chipTitle == selectedCategory
-        }
-
-        applyPostFiltering(with: searchInputView.currentText.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     @objc
