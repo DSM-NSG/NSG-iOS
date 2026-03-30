@@ -141,16 +141,6 @@ final class ShareViewController: UIViewController {
         latestCollectionHeightConstraint?.update(offset: latestCollectionView.collectionViewLayout.collectionViewContentSize.height)
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(true, animated: animated)
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        navigationController?.setNavigationBarHidden(false, animated: animated)
-    }
-
     private func addView() {
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
@@ -250,6 +240,7 @@ final class ShareViewController: UIViewController {
 
     private func configureUI() {
         view.backgroundColor = .background
+        searchButton.addTarget(self, action: #selector(didTapSearchButton), for: .touchUpInside)
         popularCollectionView.delegate = self
         popularCollectionView.dataSource = self
         popularCollectionView.register(PopularPostCell.self, forCellWithReuseIdentifier: PopularPostCell.identifier)
@@ -279,6 +270,12 @@ final class ShareViewController: UIViewController {
         categoryButtons.forEach { button in
             button.isSelected = button.chipTitle == selectedCategory
         }
+    }
+
+    @objc
+    private func didTapSearchButton() {
+        let searchViewController = SearchViewController()
+        navigationController?.pushViewController(searchViewController, animated: true)
     }
 }
 
