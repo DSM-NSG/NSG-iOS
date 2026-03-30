@@ -40,7 +40,7 @@ public final class LatestPostCell: UICollectionViewCell {
 
         cardView.snp.makeConstraints {
             $0.top.leading.trailing.equalToSuperview()
-            $0.bottom.equalToSuperview().inset(10)
+            $0.bottom.equalToSuperview()
         }
 
         titleLabel.snp.makeConstraints {
