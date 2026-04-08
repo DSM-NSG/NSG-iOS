@@ -53,6 +53,7 @@ class LoginViewController: UIViewController {
 
     private func configuration() {
         view.backgroundColor = .background
+        loginButton.isEnabled = false
     }
     
 }
