@@ -95,4 +95,9 @@ extension TotalPostViewController: UICollectionViewDataSource, UICollectionViewD
         cell.configure(with: posts[indexPath.item])
         return cell
     }
+
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let detailViewController = DetailViewController(post: posts[indexPath.item])
+        navigationController?.pushViewController(detailViewController, animated: true)
+    }
 }

@@ -308,4 +308,16 @@ extension ShareViewController: UICollectionViewDataSource, UICollectionViewDeleg
         cell.configure(with: latestPosts[indexPath.item])
         return cell
     }
+
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let selectedPost: SharePost
+        if collectionView == popularCollectionView {
+            selectedPost = popularPosts[indexPath.item]
+        } else {
+            selectedPost = latestPosts[indexPath.item]
+        }
+
+        let detailViewController = DetailViewController(post: selectedPost)
+        navigationController?.pushViewController(detailViewController, animated: true)
+    }
 }
