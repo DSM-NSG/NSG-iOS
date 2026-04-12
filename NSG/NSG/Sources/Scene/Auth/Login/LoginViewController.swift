@@ -21,6 +21,7 @@ class LoginViewController: UIViewController {
         addView()
         setLayout()
         configuration()
+        enableKeyboardDismissOnTap()
         if let loginButtonBottomConstraint {
             bindKeyboard(to: loginButtonBottomConstraint, defaultInset: 56)
         }

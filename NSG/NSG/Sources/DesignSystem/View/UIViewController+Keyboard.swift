@@ -9,6 +9,7 @@ import SnapKit
 import ObjectiveC
 
 private var keyboardObserverStoreKey: UInt8 = 0
+private var keyboardDismissTapKey: UInt8 = 0
 
 private final class KeyboardObserverStore {
     var tokens: [NSObjectProtocol] = []
@@ -19,6 +20,23 @@ private final class KeyboardObserverStore {
 }
 
 extension UIViewController {
+
+    func enableKeyboardDismissOnTap(cancelsTouchesInView: Bool = false) {
+        if let oldGesture = objc_getAssociatedObject(self, &keyboardDismissTapKey) as? UITapGestureRecognizer {
+            view.removeGestureRecognizer(oldGesture)
+        }
+
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(_dismissKeyboardByTap))
+        tapGesture.cancelsTouchesInView = cancelsTouchesInView
+        view.addGestureRecognizer(tapGesture)
+
+        objc_setAssociatedObject(
+            self,
+            &keyboardDismissTapKey,
+            tapGesture,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+    }
 
     func bindKeyboard(to bottomConstraint: Constraint, defaultInset: CGFloat) {
         unbindKeyboard()
@@ -86,5 +104,10 @@ extension UIViewController {
             options: [curveOptions, .beginFromCurrentState],
             animations: { self.view.layoutIfNeeded() }
         )
+    }
+
+    @objc
+    private func _dismissKeyboardByTap() {
+        view.endEditing(true)
     }
 }

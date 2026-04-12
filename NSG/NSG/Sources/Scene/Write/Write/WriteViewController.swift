@@ -74,6 +74,7 @@ final class WriteViewController: UIViewController {
         setupUI()
         setupLayout()
         setupObservers()
+        enableKeyboardDismissOnTap()
         if let shareButtonBottomConstraint {
             bindKeyboard(to: shareButtonBottomConstraint, defaultInset: 19)
         }

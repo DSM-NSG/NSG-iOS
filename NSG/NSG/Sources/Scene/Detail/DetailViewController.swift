@@ -121,6 +121,7 @@ final class DetailViewController: UIViewController {
         addView()
         setLayout()
         configureContent()
+        enableKeyboardDismissOnTap()
         if let commentInputBottomConstraint {
             bindKeyboard(to: commentInputBottomConstraint, defaultInset: 10)
         }
