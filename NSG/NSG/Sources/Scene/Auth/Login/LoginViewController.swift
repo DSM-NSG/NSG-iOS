@@ -59,6 +59,21 @@ class LoginViewController: UIViewController {
     private func configuration() {
         view.backgroundColor = .background
         loginButton.isEnabled = false
+        loginButton.addTarget(self, action: #selector(didTapLoginButton), for: .touchUpInside)
     }
-    
+
+    @objc
+    private func didTapLoginButton() {
+        let popupView = NSGPopupView(
+            title: "로그인",
+            message: "입력한 계정으로 로그인하시겠습니까?",
+            cancelButtonTitle: "취소",
+            confirmButtonTitle: "로그인",
+            confirmAction: { [weak self] in
+                self?.view.endEditing(true)
+                // TODO: 실제 로그인 API 연결
+            }
+        )
+        popupView.show(in: view)
+    }
 }

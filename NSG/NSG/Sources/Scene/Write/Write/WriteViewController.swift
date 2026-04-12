@@ -182,7 +182,16 @@ final class WriteViewController: UIViewController {
     }
 
     @objc private func didTapShare() {
-        // tipType, selectedCategory, titleTextField.text, contentTextView.text, selectedImages 활용
+        let popupView = NSGPopupView(
+            title: "게시물 작성",
+            message: "작성한 내용을 게시하시겠습니까?",
+            cancelButtonTitle: "취소",
+            confirmButtonTitle: "게시",
+            confirmAction: {
+                // TODO: tipType, selectedCategory, titleTextField.text, contentTextView.text, selectedImages 활용
+            }
+        )
+        popupView.show(in: view)
     }
 }
 

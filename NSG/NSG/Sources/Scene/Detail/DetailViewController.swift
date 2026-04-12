@@ -121,6 +121,7 @@ final class DetailViewController: UIViewController {
         addView()
         setLayout()
         configureContent()
+        sendButton.addTarget(self, action: #selector(didTapSendButton), for: .touchUpInside)
         enableKeyboardDismissOnTap()
         if let commentInputBottomConstraint {
             bindKeyboard(to: commentInputBottomConstraint, defaultInset: 10)
@@ -288,6 +289,30 @@ final class DetailViewController: UIViewController {
     @objc
     private func didTapBack() {
         navigationController?.popViewController(animated: true)
+    }
+
+    @objc
+    private func didTapSendButton() {
+        guard let commentText = commentTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !commentText.isEmpty else {
+            return
+        }
+
+        let popupView = NSGPopupView(
+            title: "댓글 작성",
+            message: "댓글 작성 시 익명으로 작성이 가능합니다.\n익명으로 작성 하시겠습니까?\n아니오 클릭 시 실명과 기수가 보여집니다.",
+            cancelButtonTitle: "실명공개",
+            confirmButtonTitle: "익명작성",
+            cancelAction: { [weak self] in
+                self?.view.endEditing(true)
+                // TODO: 실명 댓글 작성 API 연결
+            },
+            confirmAction: { [weak self] in
+                self?.view.endEditing(true)
+                // TODO: 익명 댓글 작성 API 연결
+            }
+        )
+        popupView.show(in: view)
     }
 }
 

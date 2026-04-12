@@ -102,6 +102,20 @@ final class MyViewController: UIViewController {
 
     private func configureUI() {
         view.backgroundColor = .background
+        withdrawRow.addTarget(self, action: #selector(didTapWithdrawButton), for: .touchUpInside)
+    }
+
+    @objc
+    private func didTapWithdrawButton() {
+        let popupView = NSGPopupView(
+            title: "회원탈퇴",
+            message: "탈퇴 시 계정 정보는 복구할 수 없습니다.\n정말 회원탈퇴 하시겠습니까?",
+            cancelButtonTitle: "취소",
+            confirmButtonTitle: "탈퇴",
+            confirmAction: {
+                // TODO: 실제 회원탈퇴 API 연결
+            }
+        )
+        popupView.show(in: view)
     }
 }
-
