@@ -13,6 +13,7 @@ class LoginViewController: UIViewController {
     let idTextField = NSGTextField(title: "DAS 아이디", placeholder: "아이디를 입력해주세요.")
     let pwdTextField = NSGTextField(title: "비밀번호", placeholder: "비밀번호를 입력해주세요.", isSecure: true)
     let loginButton = NSGButton(title: "로그인", color: .orange400)
+    private var loginButtonBottomConstraint: Constraint?
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -20,6 +21,9 @@ class LoginViewController: UIViewController {
         addView()
         setLayout()
         configuration()
+        if let loginButtonBottomConstraint {
+            bindKeyboard(to: loginButtonBottomConstraint, defaultInset: 56)
+        }
 
     }
 
@@ -46,7 +50,7 @@ class LoginViewController: UIViewController {
             $0.height.equalTo(52)
         }
         loginButton.snp.makeConstraints {
-            $0.bottom.equalToSuperview().inset(56)
+            loginButtonBottomConstraint = $0.bottom.equalTo(view.safeAreaLayoutGuide.snp.bottom).offset(-56).constraint
             $0.leading.trailing.equalToSuperview().inset(24)
         }
     }

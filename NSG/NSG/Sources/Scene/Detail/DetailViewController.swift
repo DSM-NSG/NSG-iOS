@@ -11,6 +11,7 @@ import Then
 final class DetailViewController: UIViewController {
 
     private let post: SharePost
+    private var commentInputBottomConstraint: Constraint?
 
     private let scrollView = UIScrollView().then {
         $0.showsVerticalScrollIndicator = false
@@ -120,6 +121,9 @@ final class DetailViewController: UIViewController {
         addView()
         setLayout()
         configureContent()
+        if let commentInputBottomConstraint {
+            bindKeyboard(to: commentInputBottomConstraint, defaultInset: 10)
+        }
     }
 
     private func setupNavigationBar() {
@@ -164,7 +168,7 @@ final class DetailViewController: UIViewController {
     private func setLayout() {
         commentInputBackground.snp.makeConstraints {
             $0.leading.trailing.equalToSuperview().inset(24)
-            $0.bottom.equalTo(view.safeAreaLayoutGuide).inset(10)
+            commentInputBottomConstraint = $0.bottom.equalTo(view.safeAreaLayoutGuide.snp.bottom).offset(-10).constraint
             $0.height.equalTo(52)
         }
 

@@ -12,6 +12,7 @@ final class WriteViewController: UIViewController {
 
     private let tipType: TipType
     private var selectedImages: [UIImage] = []
+    private var shareButtonBottomConstraint: Constraint?
     private var selectedCategory: LocationCategory? {
         didSet { updateShareButtonState() }
     }
@@ -73,6 +74,9 @@ final class WriteViewController: UIViewController {
         setupUI()
         setupLayout()
         setupObservers()
+        if let shareButtonBottomConstraint {
+            bindKeyboard(to: shareButtonBottomConstraint, defaultInset: 19)
+        }
     }
 
     private func setupNavigationBar() {
@@ -147,7 +151,7 @@ final class WriteViewController: UIViewController {
 
         shareButton.snp.makeConstraints {
             $0.left.right.equalToSuperview().inset(30)
-            $0.bottom.equalTo(view.safeAreaLayoutGuide).offset(-19)
+            shareButtonBottomConstraint = $0.bottom.equalTo(view.safeAreaLayoutGuide.snp.bottom).offset(-19).constraint
             $0.height.equalTo(52)
         }
     }
