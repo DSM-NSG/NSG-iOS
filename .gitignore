@@ -62,6 +62,10 @@ DerivedData/
 ### Projects ###
 *.xcodeproj
 *.xcworkspace
+!NSG/NSG.xcodeproj
+!NSG/NSG.xcodeproj/project.pbxproj
+!NSG/NSG.xcodeproj/project.xcworkspace/
+!NSG/NSG.xcodeproj/project.xcworkspace/contents.xcworkspacedata
 
 ### Tuist derived files ###
 graph.dot

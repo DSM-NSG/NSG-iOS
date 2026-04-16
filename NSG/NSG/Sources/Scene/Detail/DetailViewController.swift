@@ -10,10 +10,23 @@ import Then
 
 final class DetailViewController: UIViewController {
 
+    private struct DetailComment {
+        let id: String
+        let author: String
+        let message: String
+        let isReply: Bool
+    }
+
     private let post: SharePost
+    private let commentService: CommentServicing
     private var commentInputBottomConstraint: Constraint?
     private var replyTargetAuthor: String?
     private let defaultCommentPlaceholder = "댓글을 작성하세요."
+    private var comments: [DetailComment] = [
+        .init(id: UUID().uuidString, author: "정지윤 10기", message: "정말 좋아요 저도 동참할래요", isReply: false),
+        .init(id: UUID().uuidString, author: "익명1", message: "와 이런 생각을??", isReply: false),
+        .init(id: UUID().uuidString, author: "익명1", message: "와 이런 생각을??", isReply: true)
+    ]
 
     private let scrollView = UIScrollView().then {
         $0.showsVerticalScrollIndicator = false
@@ -76,26 +89,12 @@ final class DetailViewController: UIViewController {
         spacing: 2
     )
 
-    private let firstCommentView = CommentRowView(
-        author: "정지윤 10기",
-        message: "정말 좋아요 저도 동참할래요",
-        showsMoreButton: true,
-        isReply: false
-    )
-
-    private let secondCommentView = CommentRowView(
-        author: "익명1",
-        message: "와 이런 생각을??",
-        showsMoreButton: true,
-        isReply: false
-    )
-
-    private let replyCommentView = CommentRowView(
-        author: "익명1",
-        message: "와 이런 생각을??",
-        showsMoreButton: false,
-        isReply: true
-    )
+    private let commentsStackView = UIStackView().then {
+        $0.axis = .vertical
+        $0.alignment = .fill
+        $0.distribution = .fill
+        $0.spacing = 16
+    }
 
     private let commentInputBackground = UIView().then {
         $0.backgroundColor = .black50
@@ -115,8 +114,9 @@ final class DetailViewController: UIViewController {
         $0.tintColor = .orange400
     }
 
-    init(post: SharePost) {
+    init(post: SharePost, commentService: CommentServicing = CommentService.shared) {
         self.post = post
+        self.commentService = commentService
         super.init(nibName: nil, bundle: nil)
         hidesBottomBarWhenPushed = true
     }
@@ -131,7 +131,6 @@ final class DetailViewController: UIViewController {
         addView()
         setLayout()
         configureContent()
-        bindCommentActions()
         commentTextField.delegate = self
         sendButton.addTarget(self, action: #selector(didTapSendButton), for: .touchUpInside)
         enableKeyboardDismissOnTap()
@@ -167,9 +166,7 @@ final class DetailViewController: UIViewController {
             contentLabel,
             contentImageView,
             reactionStackView,
-            firstCommentView,
-            secondCommentView,
-            replyCommentView
+            commentsStackView
         ].forEach { contentView.addSubview($0) }
 
         [
@@ -229,18 +226,8 @@ final class DetailViewController: UIViewController {
             $0.trailing.equalToSuperview().inset(24)
         }
 
-        firstCommentView.snp.makeConstraints {
+        commentsStackView.snp.makeConstraints {
             $0.top.equalTo(reactionStackView.snp.bottom).offset(28)
-            $0.leading.trailing.equalToSuperview().inset(24)
-        }
-
-        secondCommentView.snp.makeConstraints {
-            $0.top.equalTo(firstCommentView.snp.bottom).offset(16)
-            $0.leading.trailing.equalToSuperview().inset(24)
-        }
-
-        replyCommentView.snp.makeConstraints {
-            $0.top.equalTo(secondCommentView.snp.bottom).offset(16)
             $0.leading.trailing.equalToSuperview().inset(24)
             $0.bottom.equalToSuperview().inset(24)
         }
@@ -264,16 +251,7 @@ final class DetailViewController: UIViewController {
 
         [heartReactionView, commentReactionView].forEach { reactionStackView.addArrangedSubview($0) }
         commentTextField.placeholder = defaultCommentPlaceholder
-    }
-
-    private func bindCommentActions() {
-        firstCommentView.onTapReplyAction = { [weak self] author in
-            self?.startReply(to: author)
-        }
-
-        secondCommentView.onTapReplyAction = { [weak self] author in
-            self?.startReply(to: author)
-        }
+        renderComments()
     }
 
     private func startReply(to author: String) {
@@ -305,17 +283,88 @@ final class DetailViewController: UIViewController {
             cancelButtonTitle: "실명공개",
             confirmButtonTitle: "익명작성",
             cancelAction: { [weak self] in
-                self?.view.endEditing(true)
-                self?.resetReplyState()
-                // TODO: 실명 댓글 작성 API 연결
+                self?.submitComment(commentText, isAnonymous: false)
             },
             confirmAction: { [weak self] in
-                self?.view.endEditing(true)
-                self?.resetReplyState()
-                // TODO: 익명 댓글 작성 API 연결
+                self?.submitComment(commentText, isAnonymous: true)
             }
         )
         popupView.show(in: view)
+    }
+
+    private func submitComment(_ content: String, isAnonymous: Bool) {
+        let parentAuthor = replyTargetAuthor
+        appendComment(content: content, isAnonymous: isAnonymous, isReply: parentAuthor != nil)
+
+        view.endEditing(true)
+        resetReplyState()
+
+        Task {
+            do {
+                _ = try await commentService.createComment(
+                    request: CreateCommentRequest(
+                        postTitle: post.title,
+                        content: content,
+                        isAnonymous: isAnonymous,
+                        parentAuthor: parentAuthor
+                    )
+                )
+            } catch {
+                await MainActor.run {
+                    showCommentUploadFailedAlert(error)
+                }
+            }
+        }
+    }
+
+    private func appendComment(content: String, isAnonymous: Bool, isReply: Bool) {
+        let author = isAnonymous ? "익명" : (nameLabel.text ?? "사용자")
+        let newComment = DetailComment(
+            id: UUID().uuidString,
+            author: author,
+            message: content,
+            isReply: isReply
+        )
+        comments.append(newComment)
+        commentReactionView.incrementCount()
+        renderComments()
+    }
+
+    private func renderComments() {
+        commentsStackView.arrangedSubviews.forEach { subview in
+            commentsStackView.removeArrangedSubview(subview)
+            subview.removeFromSuperview()
+        }
+
+        comments.forEach { comment in
+            let rowView = CommentRowView(
+                author: comment.author,
+                message: comment.message,
+                showsMoreButton: !comment.isReply,
+                isReply: comment.isReply
+            )
+
+            if !comment.isReply {
+                rowView.onTapReplyAction = { [weak self] author in
+                    self?.startReply(to: author)
+                }
+            }
+
+            commentsStackView.addArrangedSubview(rowView)
+        }
+    }
+
+    private func showCommentUploadFailedAlert(_ error: Error) {
+        let message: String
+        if case CommentServiceError.invalidBaseURL = error {
+            message = "서버 주소(NSG_API_BASE_URL)가 설정되지 않아 댓글 동기화에 실패했어요."
+        } else {
+            message = "서버 전송에 실패했어요. 네트워크 상태를 확인해주세요."
+        }
+
+        let alert = UIAlertController(title: "댓글 전송 실패", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
     }
 
     private func resetReplyState() {
