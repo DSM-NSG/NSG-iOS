@@ -12,6 +12,8 @@ final class DetailViewController: UIViewController {
 
     private let post: SharePost
     private var commentInputBottomConstraint: Constraint?
+    private var replyTargetAuthor: String?
+    private let defaultCommentPlaceholder = "댓글을 작성하세요."
 
     private let scrollView = UIScrollView().then {
         $0.showsVerticalScrollIndicator = false
@@ -88,16 +90,6 @@ final class DetailViewController: UIViewController {
         isReply: false
     )
 
-    private let moreReplyButton = UIButton(type: .system).then {
-        $0.setTitle("더댓글 읽기", for: .normal)
-        $0.titleLabel?.font = .style(.body4)
-        $0.setTitleColor(.orange300, for: .normal)
-        $0.layer.cornerRadius = 8
-        $0.layer.borderWidth = 1
-        $0.layer.borderColor = UIColor.orange300.cgColor
-        $0.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
-    }
-
     private let replyCommentView = CommentRowView(
         author: "익명1",
         message: "와 이런 생각을??",
@@ -115,6 +107,7 @@ final class DetailViewController: UIViewController {
         $0.font = .style(.body2)
         $0.textColor = .black800
         $0.borderStyle = .none
+        $0.returnKeyType = .send
     }
 
     private let sendButton = UIButton(type: .system).then {
@@ -138,6 +131,8 @@ final class DetailViewController: UIViewController {
         addView()
         setLayout()
         configureContent()
+        bindCommentActions()
+        commentTextField.delegate = self
         sendButton.addTarget(self, action: #selector(didTapSendButton), for: .touchUpInside)
         enableKeyboardDismissOnTap()
         if let commentInputBottomConstraint {
@@ -174,7 +169,6 @@ final class DetailViewController: UIViewController {
             reactionStackView,
             firstCommentView,
             secondCommentView,
-            moreReplyButton,
             replyCommentView
         ].forEach { contentView.addSubview($0) }
 
@@ -245,12 +239,6 @@ final class DetailViewController: UIViewController {
             $0.leading.trailing.equalToSuperview().inset(24)
         }
 
-        moreReplyButton.snp.makeConstraints {
-            $0.top.equalTo(secondCommentView.snp.top).offset(8)
-            $0.trailing.equalToSuperview().inset(24)
-            $0.height.equalTo(24)
-        }
-
         replyCommentView.snp.makeConstraints {
             $0.top.equalTo(secondCommentView.snp.bottom).offset(16)
             $0.leading.trailing.equalToSuperview().inset(24)
@@ -275,6 +263,23 @@ final class DetailViewController: UIViewController {
         contentLabel.text = post.content
 
         [heartReactionView, commentReactionView].forEach { reactionStackView.addArrangedSubview($0) }
+        commentTextField.placeholder = defaultCommentPlaceholder
+    }
+
+    private func bindCommentActions() {
+        firstCommentView.onTapReplyAction = { [weak self] author in
+            self?.startReply(to: author)
+        }
+
+        secondCommentView.onTapReplyAction = { [weak self] author in
+            self?.startReply(to: author)
+        }
+    }
+
+    private func startReply(to author: String) {
+        replyTargetAuthor = author
+        commentTextField.placeholder = "대댓글을 작성하세요."
+        commentTextField.becomeFirstResponder()
     }
 
     @objc
@@ -289,25 +294,51 @@ final class DetailViewController: UIViewController {
             return
         }
 
+        let popupTitle = replyTargetAuthor == nil ? "댓글 작성" : "대댓글 작성"
+        let popupMessage = replyTargetAuthor == nil
+            ? "댓글 작성 시 익명으로 작성이 가능합니다.\n익명으로 작성 하시겠습니까?\n아니오 클릭 시 실명과 기수가 보여집니다."
+            : "대댓글 작성 시 익명으로 작성이 가능합니다.\n익명으로 작성 하시겠습니까?\n아니오 클릭 시 실명과 기수가 보여집니다."
+
         let popupView = NSGPopupView(
-            title: "댓글 작성",
-            message: "댓글 작성 시 익명으로 작성이 가능합니다.\n익명으로 작성 하시겠습니까?\n아니오 클릭 시 실명과 기수가 보여집니다.",
+            title: popupTitle,
+            message: popupMessage,
             cancelButtonTitle: "실명공개",
             confirmButtonTitle: "익명작성",
             cancelAction: { [weak self] in
                 self?.view.endEditing(true)
+                self?.resetReplyState()
                 // TODO: 실명 댓글 작성 API 연결
             },
             confirmAction: { [weak self] in
                 self?.view.endEditing(true)
+                self?.resetReplyState()
                 // TODO: 익명 댓글 작성 API 연결
             }
         )
         popupView.show(in: view)
     }
+
+    private func resetReplyState() {
+        replyTargetAuthor = nil
+        commentTextField.text = nil
+        commentTextField.placeholder = defaultCommentPlaceholder
+    }
+}
+
+extension DetailViewController: UITextFieldDelegate {
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        didTapSendButton()
+        return false
+    }
 }
 
 private final class CommentRowView: UIView {
+
+    var onTapReplyAction: ((String) -> Void)?
+
+    private let author: String
+    private var isReplyActionVisible = false
+    private var replyActionHeightConstraint: Constraint?
 
     private let iconImageView = UIImageView().then {
         $0.backgroundColor = .orange400
@@ -326,8 +357,20 @@ private final class CommentRowView: UIView {
     }
 
     private let moreButton = UIButton(type: .system).then {
-        $0.setImage(UIImage(systemName: "ellipsis"), for: .normal)
+        $0.setImage(UIImage(named: "more")?.withRenderingMode(.alwaysTemplate), for: .normal)
         $0.tintColor = .orange400
+    }
+
+    private let replyActionButton = UIButton(type: .system).then {
+        $0.setTitle("대댓글 달기", for: .normal)
+        $0.titleLabel?.font = .style(.body4)
+        $0.setTitleColor(.black700, for: .normal)
+        $0.backgroundColor = .clear
+        $0.layer.cornerRadius = 8
+        $0.layer.borderWidth = 0.5
+        $0.layer.borderColor = UIColor.orange400.cgColor
+        $0.clipsToBounds = true
+        $0.isHidden = true
     }
 
     private let replyArrowImageView = UIImageView().then {
@@ -336,6 +379,7 @@ private final class CommentRowView: UIView {
     }
 
     init(author: String, message: String, showsMoreButton: Bool, isReply: Bool) {
+        self.author = author
         super.init(frame: .zero)
 
         authorLabel.text = author
@@ -353,6 +397,8 @@ private final class CommentRowView: UIView {
         [iconImageView, authorLabel, messageLabel].forEach { addSubview($0) }
         if showsMoreButton {
             addSubview(moreButton)
+            addSubview(replyActionButton)
+            configureMoreAction()
         }
 
         let leadingInset = isReply ? 24 : 0
@@ -374,10 +420,21 @@ private final class CommentRowView: UIView {
                 $0.centerY.equalTo(authorLabel)
                 $0.size.equalTo(16)
             }
+
+            replyActionButton.snp.makeConstraints {
+                $0.top.equalTo(moreButton.snp.bottom).offset(12)
+                $0.trailing.equalTo(moreButton.snp.trailing)
+                $0.width.equalTo(58)
+                replyActionHeightConstraint = $0.height.equalTo(0).constraint
+            }
         }
 
         messageLabel.snp.makeConstraints {
-            $0.top.equalTo(iconImageView.snp.bottom).offset(8)
+            if showsMoreButton {
+                $0.top.equalTo(replyActionButton.snp.bottom).offset(8)
+            } else {
+                $0.top.equalTo(iconImageView.snp.bottom).offset(8)
+            }
             $0.leading.equalTo(authorLabel)
             $0.trailing.lessThanOrEqualToSuperview().inset(16)
             $0.bottom.equalToSuperview()
@@ -386,5 +443,25 @@ private final class CommentRowView: UIView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    private func configureMoreAction() {
+        moreButton.addTarget(self, action: #selector(didTapMoreButton), for: .touchUpInside)
+        replyActionButton.addTarget(self, action: #selector(didTapReplyActionButton), for: .touchUpInside)
+    }
+
+    @objc
+    private func didTapMoreButton() {
+        isReplyActionVisible.toggle()
+        replyActionButton.isHidden = !isReplyActionVisible
+        replyActionHeightConstraint?.update(offset: isReplyActionVisible ? 21 : 0)
+    }
+
+    @objc
+    private func didTapReplyActionButton() {
+        isReplyActionVisible = false
+        replyActionButton.isHidden = true
+        replyActionHeightConstraint?.update(offset: 0)
+        onTapReplyAction?(author)
     }
 }

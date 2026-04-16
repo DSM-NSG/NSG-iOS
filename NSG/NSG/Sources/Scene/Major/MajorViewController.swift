@@ -121,6 +121,14 @@ final class MajorViewController: UIViewController {
         $0.textColor = .black800
     }
 
+    private let emptyStateLabel = UILabel().then {
+        $0.text = "검색 결과가 없어요."
+        $0.font = .style(.body2)
+        $0.textColor = .black500
+        $0.textAlignment = .center
+        $0.isHidden = true
+    }
+
     private let popularCollectionView = UICollectionView(
         frame: .zero,
         collectionViewLayout: {
@@ -188,6 +196,7 @@ final class MajorViewController: UIViewController {
             popularCollectionView,
             latestTitleLabel,
             latestMoreLabel,
+            emptyStateLabel,
             latestCollectionView
         ].forEach { contentView.addSubview($0) }
 
@@ -275,6 +284,11 @@ final class MajorViewController: UIViewController {
         latestMoreLabel.snp.makeConstraints {
             $0.trailing.equalToSuperview().inset(24)
             $0.centerY.equalTo(latestTitleLabel)
+        }
+
+        emptyStateLabel.snp.makeConstraints {
+            $0.top.equalTo(searchContainerView.snp.bottom).offset(84)
+            $0.centerX.equalToSuperview()
         }
 
         latestCollectionView.snp.makeConstraints {
@@ -426,14 +440,19 @@ final class MajorViewController: UIViewController {
         self.mode = mode
 
         let isHome = mode == .home
+        let isSearchEmpty = !isHome && activePopularPosts.isEmpty && activeLatestPosts.isEmpty
 
         boardTitleLabel.isHidden = !isHome
         trendTitleLabel.isHidden = !isHome
         trendCardView.isHidden = !isHome
 
-        popularTitleLabel.isHidden = isHome
-        popularMoreLabel.isHidden = isHome
-        popularCollectionView.isHidden = isHome
+        popularTitleLabel.isHidden = isHome || isSearchEmpty
+        popularMoreLabel.isHidden = isHome || isSearchEmpty
+        popularCollectionView.isHidden = isHome || isSearchEmpty
+        latestTitleLabel.isHidden = isSearchEmpty
+        latestMoreLabel.isHidden = isSearchEmpty
+        latestCollectionView.isHidden = isSearchEmpty
+        emptyStateLabel.isHidden = !isSearchEmpty
 
         latestTopFromTrendConstraint?.isActive = isHome
         latestTopFromPopularConstraint?.isActive = !isHome
@@ -466,7 +485,9 @@ final class MajorViewController: UIViewController {
 
     @objc
     private func didChangeSearchTextField() {
-        updateAutoComplete(with: searchTextField.text ?? "")
+        let keyword = searchTextField.text ?? ""
+        updateAutoComplete(with: keyword)
+        commitSearch(with: keyword)
     }
 
     @objc

@@ -24,6 +24,13 @@ final class SearchViewController: UIViewController {
     private let searchInputView = SearchInputView()
     private let autoCompleteView = SearchAutoCompleteView()
     private let categoryFilterView = CategoryFilterView()
+    private let emptyStateLabel = UILabel().then {
+        $0.text = "검색 결과가 없어요."
+        $0.font = .style(.body2)
+        $0.textColor = .black500
+        $0.textAlignment = .center
+        $0.isHidden = true
+    }
 
     private let resultCollectionView = UICollectionView(
         frame: .zero,
@@ -77,6 +84,7 @@ final class SearchViewController: UIViewController {
             searchInputView,
             autoCompleteView,
             categoryFilterView,
+            emptyStateLabel,
             resultCollectionView
         ].forEach { view.addSubview($0) }
     }
@@ -104,6 +112,11 @@ final class SearchViewController: UIViewController {
             $0.top.equalTo(categoryFilterView.snp.bottom).offset(10)
             $0.leading.trailing.equalToSuperview().inset(24)
             $0.bottom.equalTo(view.safeAreaLayoutGuide).inset(12)
+        }
+
+        emptyStateLabel.snp.makeConstraints {
+            $0.centerX.equalToSuperview()
+            $0.top.equalTo(categoryFilterView.snp.bottom).offset(48)
         }
     }
 
@@ -140,6 +153,7 @@ final class SearchViewController: UIViewController {
 
     private func bindContent() {
         filteredPosts = allPosts
+        updateEmptyState()
         resultCollectionView.reloadData()
     }
 
@@ -199,7 +213,12 @@ final class SearchViewController: UIViewController {
             return matchesKeyword && matchesCategory
         }
 
+        updateEmptyState()
         resultCollectionView.reloadData()
+    }
+
+    private func updateEmptyState() {
+        emptyStateLabel.isHidden = !filteredPosts.isEmpty
     }
 
     private func makeAutoCompleteResults(with keyword: String) -> [String] {
