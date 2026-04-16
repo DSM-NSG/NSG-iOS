@@ -10,6 +10,17 @@ import Then
 
 public final class PostReactionView: UIStackView {
 
+    private let heartReactionView = ReactionCountView(
+        mode: .toggle(onImage: "heart", offImage: "heartOff"),
+        count: 15,
+        isActivated: false
+    )
+
+    private let commentReactionView = ReactionCountView(
+        mode: .fixed(image: "coment"),
+        count: 15
+    )
+
     init() {
         super.init(frame: .zero)
 
@@ -17,33 +28,16 @@ public final class PostReactionView: UIStackView {
         alignment = .center
         spacing = 6
 
-        addArrangedSubview(makeReaction(symbolName: "heart", value: "15"))
-        addArrangedSubview(makeReaction(symbolName: "coment", value: "15"))
+        addArrangedSubview(heartReactionView)
+        addArrangedSubview(commentReactionView)
     }
 
-    private func makeReaction(symbolName: String, value: String) -> UIStackView {
-        let icon = UIImageView().then {
-            $0.image = UIImage(named: symbolName)
-            $0.tintColor = .orange300
-            $0.contentMode = .scaleAspectFit
-            $0.snp.makeConstraints { $0.size.equalTo(15) }
-        }
-
-        let label = UILabel().then {
-            $0.text = value
-            $0.font = .style(.body4)
-            $0.textColor = .orange300
-        }
-
-        let stack = UIStackView(arrangedSubviews: [icon, label])
-        stack.axis = .horizontal
-        stack.alignment = .center
-        stack.spacing = 3
-        return stack
+    func configure(heartCount: Int, commentCount: Int, isHearted: Bool) {
+        heartReactionView.configure(count: heartCount, isActivated: isHearted)
+        commentReactionView.configure(count: commentCount)
     }
 
     required init(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 }
-

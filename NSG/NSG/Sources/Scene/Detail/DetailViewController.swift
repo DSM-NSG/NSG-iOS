@@ -57,6 +57,23 @@ final class DetailViewController: UIViewController {
         $0.spacing = 10
     }
 
+    private let heartReactionView = ReactionCountView(
+        mode: .toggle(onImage: "heart", offImage: "heartOff"),
+        count: 99,
+        isActivated: true,
+        fontStyle: .body3,
+        iconSize: 16,
+        spacing: 2
+    )
+
+    private let commentReactionView = ReactionCountView(
+        mode: .fixed(image: "coment"),
+        count: 100,
+        fontStyle: .body3,
+        iconSize: 16,
+        spacing: 2
+    )
+
     private let firstCommentView = CommentRowView(
         author: "정지윤 10기",
         message: "정말 좋아요 저도 동참할래요",
@@ -257,33 +274,7 @@ final class DetailViewController: UIViewController {
         titleLabel.text = post.title
         contentLabel.text = post.content
 
-        let heartReaction = makeReactionItem(symbolName: "heart", count: "99+")
-        let commentReaction = makeReactionItem(symbolName: "coment", count: "99+")
-        [heartReaction, commentReaction].forEach { reactionStackView.addArrangedSubview($0) }
-    }
-
-    private func makeReactionItem(symbolName: String, count: String) -> UIStackView {
-        let icon = UIImageView().then {
-            $0.image = UIImage(named: symbolName)?.withRenderingMode(.alwaysTemplate)
-            $0.tintColor = .orange300
-            $0.contentMode = .scaleAspectFit
-        }
-
-        let label = UILabel().then {
-            $0.text = count
-            $0.font = .style(.body3)
-            $0.textColor = .orange300
-        }
-
-        icon.snp.makeConstraints {
-            $0.size.equalTo(16)
-        }
-
-        let stack = UIStackView(arrangedSubviews: [icon, label])
-        stack.axis = .horizontal
-        stack.alignment = .center
-        stack.spacing = 2
-        return stack
+        [heartReactionView, commentReactionView].forEach { reactionStackView.addArrangedSubview($0) }
     }
 
     @objc
