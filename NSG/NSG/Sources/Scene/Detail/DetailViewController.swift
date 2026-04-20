@@ -22,13 +22,9 @@ final class DetailViewController: UIViewController {
     private let commentService: CommentServicing
     private let tipService: TipServicing
     private var commentInputBottomConstraint: Constraint?
-    private var replyTargetAuthor: String?
+    private var replyTargetComment: DetailComment?
     private let defaultCommentPlaceholder = "댓글을 작성하세요."
-    private var comments: [DetailComment] = [
-        .init(id: UUID().uuidString, author: "정지윤 10기", message: "정말 좋아요 저도 동참할래요", isReply: false),
-        .init(id: UUID().uuidString, author: "익명1", message: "와 이런 생각을??", isReply: false),
-        .init(id: UUID().uuidString, author: "익명1", message: "와 이런 생각을??", isReply: true)
-    ]
+    private var comments: [DetailComment] = []
 
     private let scrollView = UIScrollView().then {
         $0.showsVerticalScrollIndicator = false
@@ -301,8 +297,8 @@ final class DetailViewController: UIViewController {
         }
     }
 
-    private func startReply(to author: String) {
-        replyTargetAuthor = author
+    private func startReply(to comment: DetailComment) {
+        replyTargetComment = comment
         commentTextField.placeholder = "대댓글을 작성하세요."
         commentTextField.becomeFirstResponder()
     }
@@ -319,8 +315,8 @@ final class DetailViewController: UIViewController {
             return
         }
 
-        let popupTitle = replyTargetAuthor == nil ? "댓글 작성" : "대댓글 작성"
-        let popupMessage = replyTargetAuthor == nil
+        let popupTitle = replyTargetComment == nil ? "댓글 작성" : "대댓글 작성"
+        let popupMessage = replyTargetComment == nil
             ? "댓글 작성 시 익명으로 작성이 가능합니다.\n익명으로 작성 하시겠습니까?\n아니오 클릭 시 실명과 기수가 보여집니다."
             : "대댓글 작성 시 익명으로 작성이 가능합니다.\n익명으로 작성 하시겠습니까?\n아니오 클릭 시 실명과 기수가 보여집니다."
 
@@ -340,22 +336,38 @@ final class DetailViewController: UIViewController {
     }
 
     private func submitComment(_ content: String, isAnonymous: Bool) {
-        let parentAuthor = replyTargetAuthor
-        appendComment(content: content, isAnonymous: isAnonymous, isReply: parentAuthor != nil)
+        guard let postID = post.id, !postID.isEmpty else {
+            showCommentUploadFailedAlert(CommentServiceError.invalidResponse)
+            return
+        }
 
         view.endEditing(true)
-        resetReplyState()
 
         Task {
             do {
-                _ = try await commentService.createComment(
-                    request: CreateCommentRequest(
-                        postTitle: post.title,
-                        content: content,
-                        isAnonymous: isAnonymous,
-                        parentAuthor: parentAuthor
+                let response: CreateCommentResponse
+                if let parentComment = replyTargetComment {
+                    response = try await commentService.createReply(
+                        postID: postID,
+                        commentID: parentComment.id,
+                        request: CreateCommentRequest(
+                            content: content,
+                            isAnonymous: isAnonymous
+                        )
                     )
-                )
+                    appendComment(response: response, isReply: true)
+                } else {
+                    response = try await commentService.createComment(
+                        postID: postID,
+                        request: CreateCommentRequest(
+                            content: content,
+                            isAnonymous: isAnonymous
+                        )
+                    )
+                    appendComment(response: response, isReply: false)
+                    commentReactionView.incrementCount()
+                }
+                resetReplyState()
             } catch {
                 await MainActor.run {
                     showCommentUploadFailedAlert(error)
@@ -364,16 +376,14 @@ final class DetailViewController: UIViewController {
         }
     }
 
-    private func appendComment(content: String, isAnonymous: Bool, isReply: Bool) {
-        let author = isAnonymous ? "익명" : (nameLabel.text ?? "사용자")
+    private func appendComment(response: CreateCommentResponse, isReply: Bool) {
         let newComment = DetailComment(
-            id: UUID().uuidString,
-            author: author,
-            message: content,
+            id: response.id,
+            author: response.author,
+            message: response.content,
             isReply: isReply
         )
         comments.append(newComment)
-        commentReactionView.incrementCount()
         renderComments()
     }
 
@@ -392,8 +402,8 @@ final class DetailViewController: UIViewController {
             )
 
             if !comment.isReply {
-                rowView.onTapReplyAction = { [weak self] author in
-                    self?.startReply(to: author)
+                rowView.onTapReplyAction = { [weak self] in
+                    self?.startReply(to: comment)
                 }
             }
 
@@ -405,6 +415,14 @@ final class DetailViewController: UIViewController {
         let message: String
         if case CommentServiceError.invalidBaseURL = error {
             message = "서버 주소(NSG_API_BASE_URL)가 설정되지 않아 댓글 동기화에 실패했어요."
+        } else if case CommentServiceError.missingToken = error {
+            AuthTokenStore.shared.clear()
+            AppRootNavigator.moveToOnboarding()
+            return
+        } else if case CommentServiceError.server(let statusCode) = error, statusCode == 401 {
+            AuthTokenStore.shared.clear()
+            AppRootNavigator.moveToOnboarding()
+            return
         } else {
             message = "서버 전송에 실패했어요. 네트워크 상태를 확인해주세요."
         }
@@ -425,7 +443,7 @@ final class DetailViewController: UIViewController {
     }
 
     private func resetReplyState() {
-        replyTargetAuthor = nil
+        replyTargetComment = nil
         commentTextField.text = nil
         commentTextField.placeholder = defaultCommentPlaceholder
     }
@@ -440,7 +458,7 @@ extension DetailViewController: UITextFieldDelegate {
 
 private final class CommentRowView: UIView {
 
-    var onTapReplyAction: ((String) -> Void)?
+    var onTapReplyAction: (() -> Void)?
 
     private let author: String
     private var isReplyActionVisible = false
@@ -568,6 +586,6 @@ private final class CommentRowView: UIView {
         isReplyActionVisible = false
         replyActionButton.isHidden = true
         replyActionHeightConstraint?.update(offset: 0)
-        onTapReplyAction?(author)
+        onTapReplyAction?()
     }
 }

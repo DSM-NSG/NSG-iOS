@@ -1,7 +1,10 @@
 import Foundation
 import Moya
+import UIKit
 
 public final class MoyaLoggingPlugin: PluginType {
+    private static var isHandlingUnauthorized = false
+
     public init() {}
 
     public func willSend(_ request: RequestType, target: TargetType) {
@@ -47,6 +50,8 @@ public final class MoyaLoggingPlugin: PluginType {
     }
     log.append("------------------- END HTTP (\(response.data.count)-byte body) -------------------")
     print(log)
+
+    handleUnauthorizedIfNeeded(statusCode: statusCode, target: target)
   }
 
   func onFail(_ error: MoyaError, target: TargetType) {
@@ -59,6 +64,20 @@ public final class MoyaLoggingPlugin: PluginType {
     log.append("\(error.failureReason ?? error.errorDescription ?? "unknown error")\n")
     log.append("<-- END HTTP")
     print(log)
+  }
+
+  private func handleUnauthorizedIfNeeded(statusCode: Int, target: TargetType) {
+    guard statusCode == 401 else { return }
+    guard target.path != "/users/login/" else { return }
+    guard !Self.isHandlingUnauthorized else { return }
+
+    Self.isHandlingUnauthorized = true
+
+    DispatchQueue.main.async {
+      AuthTokenStore.shared.clear()
+      AppRootNavigator.moveToOnboarding()
+      Self.isHandlingUnauthorized = false
+    }
   }
 
 }
