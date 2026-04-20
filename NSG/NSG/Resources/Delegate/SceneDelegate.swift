@@ -17,11 +17,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = (scene as? UIWindowScene) else { return }
 
         let window = UIWindow(windowScene: windowScene)
-        let splashVC = TabbarViewController()
-        let navigationController = UINavigationController(rootViewController: splashVC)
-        
-        window.rootViewController = TabbarViewController()
-        self.window = window
+        if AuthTokenStore.shared.isLoggedIn {
+            window.rootViewController = TabbarViewController()
+        } else {
+            let onboardingViewController = SplashViewController()
+            let navigationController = UINavigationController(rootViewController: onboardingViewController)
+            window.rootViewController = navigationController
+        }
+
         self.window = window
         window.makeKeyAndVisible()
     }

@@ -8,12 +8,27 @@ import UIKit
 import SnapKit
 import Then
 
+@MainActor
 class LoginViewController: UIViewController {
 
     let idTextField = NSGTextField(title: "DAS 아이디", placeholder: "아이디를 입력해주세요.")
     let pwdTextField = NSGTextField(title: "비밀번호", placeholder: "비밀번호를 입력해주세요.", isSecure: true)
     let loginButton = NSGButton(title: "로그인", color: .orange400)
     private var loginButtonBottomConstraint: Constraint?
+    private let authService: AuthServicing
+
+    init(authService: AuthServicing) {
+        self.authService = authService
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    convenience init() {
+        self.init(authService: AuthService.shared)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -60,20 +75,59 @@ class LoginViewController: UIViewController {
         view.backgroundColor = .background
         loginButton.isEnabled = false
         loginButton.addTarget(self, action: #selector(didTapLoginButton), for: .touchUpInside)
+        idTextField.textField.addTarget(self, action: #selector(textFieldDidChange), for: .editingChanged)
+        pwdTextField.textField.addTarget(self, action: #selector(textFieldDidChange), for: .editingChanged)
+    }
+
+    @objc
+    private func textFieldDidChange() {
+        let id = idTextField.currentText().trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = pwdTextField.currentText().trimmingCharacters(in: .whitespacesAndNewlines)
+        loginButton.isEnabled = !id.isEmpty && !password.isEmpty
     }
 
     @objc
     private func didTapLoginButton() {
-        let popupView = NSGPopupView(
-            title: "로그인",
-            message: "입력한 계정으로 로그인하시겠습니까?",
-            cancelButtonTitle: "취소",
-            confirmButtonTitle: "로그인",
-            confirmAction: { [weak self] in
-                self?.view.endEditing(true)
-                // TODO: 실제 로그인 API 연결
+        view.endEditing(true)
+        login()
+    }
+
+    private func login() {
+        let id = idTextField.currentText().trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = pwdTextField.currentText().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, !password.isEmpty else { return }
+
+        loginButton.isEnabled = false
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let response = try await authService.login(accountID: id, password: password)
+                AuthTokenStore.shared.save(
+                    accessToken: response.accessToken,
+                    refreshToken: response.refreshToken
+                )
+
+                await MainActor.run {
+                    AppRootNavigator.moveToMain()
+                }
+            } catch {
+                await MainActor.run {
+                    self.loginButton.isEnabled = true
+                    self.presentLoginError(error)
+                }
             }
+        }
+    }
+
+    private func presentLoginError(_ error: Error) {
+        let alert = UIAlertController(
+            title: "로그인 실패",
+            message: error.localizedDescription,
+            preferredStyle: .alert
         )
-        popupView.show(in: view)
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
     }
 }
