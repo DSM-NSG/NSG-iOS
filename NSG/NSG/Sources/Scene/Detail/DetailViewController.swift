@@ -8,6 +8,7 @@ import UIKit
 import SnapKit
 import Then
 
+@MainActor
 final class DetailViewController: UIViewController {
 
     private struct DetailComment {
@@ -17,8 +18,9 @@ final class DetailViewController: UIViewController {
         let isReply: Bool
     }
 
-    private let post: SharePost
+    private var post: SharePost
     private let commentService: CommentServicing
+    private let tipService: TipServicing
     private var commentInputBottomConstraint: Constraint?
     private var replyTargetAuthor: String?
     private let defaultCommentPlaceholder = "댓글을 작성하세요."
@@ -114,11 +116,24 @@ final class DetailViewController: UIViewController {
         $0.tintColor = .orange400
     }
 
-    init(post: SharePost, commentService: CommentServicing = CommentService.shared) {
+    init(
+        post: SharePost,
+        commentService: CommentServicing,
+        tipService: TipServicing
+    ) {
         self.post = post
         self.commentService = commentService
+        self.tipService = tipService
         super.init(nibName: nil, bundle: nil)
         hidesBottomBarWhenPushed = true
+    }
+
+    convenience init(post: SharePost) {
+        self.init(
+            post: post,
+            commentService: CommentService.shared,
+            tipService: TipService.shared
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -131,6 +146,7 @@ final class DetailViewController: UIViewController {
         addView()
         setLayout()
         configureContent()
+        fetchTipDetailIfNeeded()
         commentTextField.delegate = self
         sendButton.addTarget(self, action: #selector(didTapSendButton), for: .touchUpInside)
         enableKeyboardDismissOnTap()
@@ -246,12 +262,43 @@ final class DetailViewController: UIViewController {
     }
 
     private func configureContent() {
+        nameLabel.text = post.author ?? "익명"
         titleLabel.text = post.title
         contentLabel.text = post.content
+        heartReactionView.configure(count: post.likeCount, isActivated: post.isLiked ?? false)
+        commentReactionView.configure(count: post.commentCount)
 
-        [heartReactionView, commentReactionView].forEach { reactionStackView.addArrangedSubview($0) }
+        if let imageURL = post.imageURLs.first, !imageURL.isEmpty {
+            contentImageView.isHidden = false
+        } else {
+            contentImageView.isHidden = !post.hasImages
+        }
+
+        if reactionStackView.arrangedSubviews.isEmpty {
+            [heartReactionView, commentReactionView].forEach { reactionStackView.addArrangedSubview($0) }
+        }
         commentTextField.placeholder = defaultCommentPlaceholder
         renderComments()
+    }
+
+    private func fetchTipDetailIfNeeded() {
+        guard let postID = post.id else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let detailedPost = try await tipService.tipDetail(id: postID)
+                await MainActor.run {
+                    self.post = detailedPost
+                    self.configureContent()
+                }
+            } catch {
+                await MainActor.run {
+                    self.showPostLoadFailedAlert(error)
+                }
+            }
+        }
     }
 
     private func startReply(to author: String) {
@@ -363,6 +410,16 @@ final class DetailViewController: UIViewController {
         }
 
         let alert = UIAlertController(title: "댓글 전송 실패", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func showPostLoadFailedAlert(_ error: Error) {
+        let alert = UIAlertController(
+            title: "게시글 불러오기 실패",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
         alert.addAction(UIAlertAction(title: "확인", style: .default))
         present(alert, animated: true)
     }

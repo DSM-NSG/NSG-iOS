@@ -102,7 +102,37 @@ final class MyViewController: UIViewController {
 
     private func configureUI() {
         view.backgroundColor = .background
+        updateUserInfo()
+        logoutRow.addTarget(self, action: #selector(didTapLogoutButton), for: .touchUpInside)
         withdrawRow.addTarget(self, action: #selector(didTapWithdrawButton), for: .touchUpInside)
+    }
+
+    private func updateUserInfo() {
+        guard let user = AuthTokenStore.shared.currentUser else {
+            return
+        }
+
+        nameLabel.text = user.name
+        classLabel.text = "\(user.grade)기"
+    }
+
+    @objc
+    private func didTapLogoutButton() {
+        let popupView = NSGPopupView(
+            title: "로그아웃",
+            message: "현재 계정에서 로그아웃 하시겠습니까?",
+            cancelButtonTitle: "취소",
+            confirmButtonTitle: "로그아웃",
+            confirmAction: { [weak self] in
+                self?.logout()
+            }
+        )
+        popupView.show(in: view)
+    }
+
+    private func logout() {
+        AuthTokenStore.shared.clear()
+        AppRootNavigator.moveToOnboarding()
     }
 
     @objc

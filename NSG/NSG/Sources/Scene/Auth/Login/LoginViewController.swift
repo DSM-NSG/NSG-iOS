@@ -104,9 +104,10 @@ class LoginViewController: UIViewController {
 
             do {
                 let response = try await authService.login(accountID: id, password: password)
-                AuthTokenStore.shared.save(
+                AuthTokenStore.shared.saveSession(
                     accessToken: response.accessToken,
-                    refreshToken: response.refreshToken
+                    refreshToken: response.refreshToken,
+                    user: response.user
                 )
 
                 await MainActor.run {

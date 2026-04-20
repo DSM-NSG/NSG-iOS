@@ -62,8 +62,12 @@ public final class PopularPostCell: UICollectionViewCell {
 
     func configure(with post: SharePost) {
         titleLabel.text = post.title
-        contentLabel.text = post.content
+        contentLabel.text = post.content.isEmpty ? (post.author ?? "") : post.content
         chip.text = post.category
-        reactionView.configure(heartCount: 15, commentCount: 15, isHearted: false)
+        reactionView.configure(
+            heartCount: post.likeCount,
+            commentCount: post.commentCount,
+            isHearted: post.isLiked ?? false
+        )
     }
 }

@@ -7,6 +7,7 @@ final class AuthTokenStore {
     private enum Key {
         static let accessToken = "nsg.auth.accessToken"
         static let refreshToken = "nsg.auth.refreshToken"
+        static let user = "nsg.auth.user"
     }
 
     private let userDefaults: UserDefaults
@@ -32,13 +33,28 @@ final class AuthTokenStore {
         return !accessToken.isEmpty && !refreshToken.isEmpty
     }
 
+    var currentUser: LoginUser? {
+        guard let userData = userDefaults.data(forKey: Key.user) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(LoginUser.self, from: userData)
+    }
+
     func save(accessToken: String, refreshToken: String) {
         userDefaults.set(accessToken, forKey: Key.accessToken)
         userDefaults.set(refreshToken, forKey: Key.refreshToken)
     }
 
+    func saveSession(accessToken: String, refreshToken: String, user: LoginUser) {
+        save(accessToken: accessToken, refreshToken: refreshToken)
+        if let userData = try? JSONEncoder().encode(user) {
+            userDefaults.set(userData, forKey: Key.user)
+        }
+    }
+
     func clear() {
         userDefaults.removeObject(forKey: Key.accessToken)
         userDefaults.removeObject(forKey: Key.refreshToken)
+        userDefaults.removeObject(forKey: Key.user)
     }
 }

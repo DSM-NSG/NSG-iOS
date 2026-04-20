@@ -8,9 +8,11 @@ import UIKit
 import SnapKit
 import Then
 
+@MainActor
 final class WriteViewController: UIViewController {
 
     private let tipType: TipType
+    private let tipService: TipServicing
     private var selectedImages: [UIImage] = []
     private var shareButtonBottomConstraint: Constraint?
     private var selectedCategory: LocationCategory? {
@@ -60,10 +62,15 @@ final class WriteViewController: UIViewController {
         $0.addTarget(self, action: #selector(didTapShare), for: .touchUpInside)
     }
 
-    init(tipType: TipType) {
+    init(tipType: TipType, tipService: TipServicing) {
         self.tipType = tipType
+        self.tipService = tipService
         super.init(nibName: nil, bundle: nil)
         hidesBottomBarWhenPushed = true
+    }
+
+    convenience init(tipType: TipType) {
+        self.init(tipType: tipType, tipService: TipService.shared)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -184,14 +191,74 @@ final class WriteViewController: UIViewController {
     @objc private func didTapShare() {
         let popupView = NSGPopupView(
             title: "게시물 작성",
-            message: "작성한 내용을 게시하시겠습니까?",
-            cancelButtonTitle: "취소",
-            confirmButtonTitle: "게시",
-            confirmAction: {
-                // TODO: tipType, selectedCategory, titleTextField.text, contentTextView.text, selectedImages 활용
+            message: "익명으로 작성하시겠습니까?\n아니오를 누르면 실명과 기수가 노출됩니다.",
+            cancelButtonTitle: "실명공개",
+            confirmButtonTitle: "익명작성",
+            cancelAction: { [weak self] in
+                self?.submitTip(isAnonymous: false)
+            },
+            confirmAction: { [weak self] in
+                self?.submitTip(isAnonymous: true)
             }
         )
         popupView.show(in: view)
+    }
+
+    private func submitTip(isAnonymous: Bool) {
+        guard shareButton.isEnabled else { return }
+
+        let title = titleTextField.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = contentTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, !body.isEmpty else { return }
+
+        let request = CreateTipRequest(
+            title: title,
+            body: body,
+            category: tipType.apiCategory,
+            isAnonymous: isAnonymous,
+            placeID: nil,
+            imageURLs: []
+        )
+
+        shareButton.isEnabled = false
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                _ = try await tipService.createTip(request: request)
+                await MainActor.run {
+                    self.showCreatedAlert()
+                }
+            } catch {
+                await MainActor.run {
+                    self.updateShareButtonState()
+                    self.showCreateFailedAlert(error)
+                }
+            }
+        }
+    }
+
+    private func showCreatedAlert() {
+        let alert = UIAlertController(
+            title: "작성 완료",
+            message: "게시글이 등록되었습니다.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default, handler: { [weak self] _ in
+            self?.navigationController?.popViewController(animated: true)
+        }))
+        present(alert, animated: true)
+    }
+
+    private func showCreateFailedAlert(_ error: Error) {
+        let alert = UIAlertController(
+            title: "작성 실패",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
     }
 }
 
@@ -267,5 +334,22 @@ extension WriteViewController: UICollectionViewDataSource, UICollectionViewDeleg
         let tapped = LocationCategory.allCases[indexPath.item]
         selectedCategory = selectedCategory == tapped ? nil : tapped
         collectionView.reloadData()
+    }
+}
+
+private extension TipType {
+    var apiCategory: String {
+        switch self {
+        case .location:
+            return "PLACE"
+        case .dormitory:
+            return "DORM_LIFE"
+        case .school:
+            return "SCHOOL_LIFE"
+        case .major:
+            return "SCHOOL_LIFE"
+        case .etc:
+            return "ETC"
+        }
     }
 }

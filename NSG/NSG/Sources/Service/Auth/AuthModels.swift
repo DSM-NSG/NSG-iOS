@@ -22,7 +22,7 @@ struct LoginResponse: Decodable {
     }
 }
 
-struct LoginUser: Decodable {
+struct LoginUser: Codable {
     let id: String
     let accountID: String
     let name: String

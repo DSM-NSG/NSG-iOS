@@ -8,21 +8,13 @@ import UIKit
 import SnapKit
 import Then
 
+@MainActor
 final class ShareViewController: UIViewController {
 
     private var selectedCategory: String?
-
-    private let popularPosts = [
-        SharePost(category: "기숙사", title: "화장실 변기가 막혔...", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다~~~ 변기를 잘 뚫는 법 ~!! 깨알호..."),
-        SharePost(category: "기숙사", title: "화장실 변기가 막혔...", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다~~~ 변기를 잘 뚫는 법 ~!! 깨알호..."),
-        SharePost(category: "장소", title: "화장실 변기가 막혔...", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다~~~ 변기를 잘 뚫는 법 ~!! 깨알호...")
-    ]
-
-    private let latestPosts = [
-        SharePost(category: "기숙사", title: "화장실 변기가 막혔다고요??? 당장 들어오세요", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다~~~ 변기를 잘 뚫는 법 ~!! 깨알호..."),
-        SharePost(category: "기숙사", title: "화장실 변기가 막혔다고요??? 당장 들어오세요", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다~~~ 변기를 잘 뚫는 법 ~!! 깨알호..."),
-        SharePost(category: "기숙사", title: "화장실 변기가 막혔다고요??? 당장 들어오세요", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다~~~ 변기를 잘 뚫는 법 ~!! 깨알호...")
-    ]
+    private var popularPosts: [SharePost] = []
+    private var latestPosts: [SharePost] = []
+    private let tipService: TipServicing
 
     private let scrollView = UIScrollView().then {
         $0.showsVerticalScrollIndicator = false
@@ -37,13 +29,13 @@ final class ShareViewController: UIViewController {
     }
 
     private let nameLabel = UILabel().then {
-        $0.text = "정지윤"
+        $0.text = "사용자"
         $0.font = .style(.body2)
         $0.textColor = .black800
     }
 
     private let classLabel = UILabel().then {
-        $0.text = "10기"
+        $0.text = "-기"
         $0.font = .style(.body2)
         $0.textColor = .black800
     }
@@ -120,13 +112,27 @@ final class ShareViewController: UIViewController {
 
     private var latestCollectionHeightConstraint: Constraint?
 
+    init(tipService: TipServicing) {
+        self.tipService = tipService
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    convenience init() {
+        self.init(tipService: TipService.shared)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
         addView()
         setLayout()
         configureUI()
-        bindContent()
+        updateUserInfo()
+        fetchTips()
     }
 
     override func viewDidLayoutSubviews() {
@@ -236,9 +242,11 @@ final class ShareViewController: UIViewController {
         popularMoreLabel.isUserInteractionEnabled = true
         latestMoreLabel.isUserInteractionEnabled = true
         searchButton.addTarget(self, action: #selector(didTapSearchButton), for: .touchUpInside)
+
         popularCollectionView.delegate = self
         popularCollectionView.dataSource = self
         popularCollectionView.register(PopularPostCell.self, forCellWithReuseIdentifier: PopularPostCell.identifier)
+
         latestCollectionView.delegate = self
         latestCollectionView.dataSource = self
         latestCollectionView.register(LatestPostCell.self, forCellWithReuseIdentifier: LatestPostCell.identifier)
@@ -252,13 +260,53 @@ final class ShareViewController: UIViewController {
 
         categoryFilterView.onSelectCategory = { [weak self] category in
             self?.selectedCategory = category
+            self?.fetchTips()
+        }
+    }
+
+    private func updateUserInfo() {
+        guard let user = AuthTokenStore.shared.currentUser else {
+            return
+        }
+
+        nameLabel.text = user.name
+        classLabel.text = "\(user.grade)기"
+    }
+
+    private func fetchTips() {
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let posts = try await tipService.listTips(category: selectedCategory, page: 1, search: nil)
+                await MainActor.run {
+                    self.latestPosts = posts
+                    self.popularPosts = Array(posts.sorted(by: { $0.likeCount > $1.likeCount }).prefix(10))
+                    self.bindContent()
+                }
+            } catch {
+                await MainActor.run {
+                    self.presentLoadError(error)
+                }
+            }
         }
     }
 
     private func bindContent() {
+        popularCollectionView.reloadData()
         latestCollectionView.reloadData()
         latestCollectionView.layoutIfNeeded()
         latestCollectionHeightConstraint?.update(offset: latestCollectionView.collectionViewLayout.collectionViewContentSize.height)
+    }
+
+    private func presentLoadError(_ error: Error) {
+        let alert = UIAlertController(
+            title: "게시글 불러오기 실패",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
     }
 
     @objc
