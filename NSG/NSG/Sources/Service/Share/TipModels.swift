@@ -73,6 +73,22 @@ struct TipListPageResponse: Decodable {
     let results: [TipListResponseItem]
 }
 
+struct TipLikeToggleResponse: Decodable {
+    let isLiked: Bool
+    let likeCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case isLiked = "is_liked"
+        case likeCount = "like_count"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isLiked = container.decodeFlexibleBool(forKey: .isLiked)
+        likeCount = container.decodeFlexibleInt(forKey: .likeCount)
+    }
+}
+
 struct TipDetailResponse: Decodable {
     struct Image: Decodable {
         let url: String

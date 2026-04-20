@@ -29,13 +29,13 @@ final class ShareViewController: UIViewController {
     }
 
     private let nameLabel = UILabel().then {
-        $0.text = "사용자"
+        $0.text = ""
         $0.font = .style(.body2)
         $0.textColor = .black800
     }
 
     private let classLabel = UILabel().then {
-        $0.text = "-기"
+        $0.text = ""
         $0.font = .style(.body2)
         $0.textColor = .black800
     }

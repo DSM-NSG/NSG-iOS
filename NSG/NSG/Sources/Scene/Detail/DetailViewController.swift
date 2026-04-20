@@ -21,6 +21,7 @@ final class DetailViewController: UIViewController {
     private var post: SharePost
     private let commentService: CommentServicing
     private let tipService: TipServicing
+    private var isLikeRequesting = false
     private var commentInputBottomConstraint: Constraint?
     private var replyTargetComment: DetailComment?
     private let defaultCommentPlaceholder = "댓글을 작성하세요."
@@ -143,6 +144,7 @@ final class DetailViewController: UIViewController {
         setLayout()
         configureContent()
         fetchTipDetailIfNeeded()
+        bindLikeAction()
         commentTextField.delegate = self
         sendButton.addTarget(self, action: #selector(didTapSendButton), for: .touchUpInside)
         enableKeyboardDismissOnTap()
@@ -275,6 +277,68 @@ final class DetailViewController: UIViewController {
         }
         commentTextField.placeholder = defaultCommentPlaceholder
         renderComments()
+    }
+
+    private func bindLikeAction() {
+        heartReactionView.onToggle = { [weak self] isActivated, toggledCount in
+            self?.toggleLike(isActivated: isActivated, toggledCount: toggledCount)
+        }
+    }
+
+    private func toggleLike(isActivated: Bool, toggledCount: Int) {
+        guard let postID = post.id, !postID.isEmpty else {
+            rollbackLikeUI(isActivated: isActivated, toggledCount: toggledCount)
+            return
+        }
+
+        guard !isLikeRequesting else {
+            rollbackLikeUI(isActivated: isActivated, toggledCount: toggledCount)
+            return
+        }
+
+        isLikeRequesting = true
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let response = try await tipService.toggleLike(postID: postID)
+                await MainActor.run {
+                    self.heartReactionView.configure(count: response.likeCount, isActivated: response.isLiked)
+                    self.updatePostLikeState(isLiked: response.isLiked, likeCount: response.likeCount)
+                    self.isLikeRequesting = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.rollbackLikeUI(isActivated: isActivated, toggledCount: toggledCount)
+                    self.isLikeRequesting = false
+                    self.showLikeToggleFailedAlert(error)
+                }
+            }
+        }
+    }
+
+    private func rollbackLikeUI(isActivated: Bool, toggledCount: Int) {
+        let revertedCount = max(0, toggledCount + (isActivated ? -1 : 1))
+        heartReactionView.configure(count: revertedCount, isActivated: !isActivated)
+    }
+
+    private func updatePostLikeState(isLiked: Bool, likeCount: Int) {
+        post = SharePost(
+            id: post.id,
+            author: post.author,
+            title: post.title,
+            content: post.content,
+            category: post.category,
+            likeCount: likeCount,
+            commentCount: post.commentCount,
+            hasImages: post.hasImages,
+            createdAt: post.createdAt,
+            place: post.place,
+            isAnonymous: post.isAnonymous,
+            isLiked: isLiked,
+            imageURLs: post.imageURLs
+        )
     }
 
     private func fetchTipDetailIfNeeded() {
@@ -435,6 +499,16 @@ final class DetailViewController: UIViewController {
     private func showPostLoadFailedAlert(_ error: Error) {
         let alert = UIAlertController(
             title: "게시글 불러오기 실패",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func showLikeToggleFailedAlert(_ error: Error) {
+        let alert = UIAlertController(
+            title: "좋아요 실패",
             message: error.localizedDescription,
             preferredStyle: .alert
         )

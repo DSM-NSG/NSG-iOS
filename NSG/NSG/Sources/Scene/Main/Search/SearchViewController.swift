@@ -8,18 +8,10 @@ import UIKit
 import SnapKit
 import Then
 
+@MainActor
 final class SearchViewController: UIViewController {
 
-    private let allPosts = [
-        SharePost(category: "장소", title: "학교에서 몰래 탈출하는 법", content: "학교 정문 말고도 빠르게 나갈 수 있는 타이밍을 정리해봤어요."),
-        SharePost(category: "기숙사", title: "학교 기숙사에서 몰래 배달 시켜먹는 방법", content: "기숙사에서 눈치 안 보고 배달 받는 루트를 공유합니다."),
-        SharePost(category: "기타", title: "학교 폭파시키기", content: "물론 진짜는 아니고 발표를 완전 터뜨리는 방법입니다."),
-        SharePost(category: "대마고", title: "주말인데 학교 가야하나요?", content: "주말 자습과 귀가 기준을 정리해봤어요."),
-        SharePost(category: "장소", title: "학교 와이파이 잘 터지는 곳 정리", content: "시험 기간에 안정적으로 인터넷 되는 장소를 정리했습니다."),
-        SharePost(category: "기숙사", title: "기숙사 점호 전에 편의점 다녀오는 루트", content: "시간 안에 복귀 가능한 동선을 기준으로 정리했어요."),
-        SharePost(category: "대마고", title: "학교 발표 수업 안 떨고 하는 법", content: "발표 전에 준비하면 좋은 포인트를 적어봤습니다."),
-        SharePost(category: "기타", title: "학교에서 잠 깨는 제일 확실한 방법", content: "아침 수업 전에 잠을 깨는 루틴을 공유합니다.")
-    ]
+    private let tipService: TipServicing
 
     private let searchInputView = SearchInputView()
     private let autoCompleteView = SearchAutoCompleteView()
@@ -51,11 +43,18 @@ final class SearchViewController: UIViewController {
 
     private var selectedCategory: String?
     private var filteredResults: [String] = []
+    private var allPosts: [SharePost] = []
     private var filteredPosts: [SharePost] = []
+    private var searchTask: Task<Void, Never>?
 
-    init() {
+    init(tipService: TipServicing) {
+        self.tipService = tipService
         super.init(nibName: nil, bundle: nil)
         hidesBottomBarWhenPushed = true
+    }
+
+    convenience init() {
+        self.init(tipService: TipService.shared)
     }
 
     required init?(coder: NSCoder) {
@@ -71,7 +70,7 @@ final class SearchViewController: UIViewController {
         addView()
         setLayout()
         configureUI()
-        bindContent()
+        fetchPosts(keyword: nil)
     }
 
     override func viewDidLayoutSubviews() {
@@ -147,14 +146,9 @@ final class SearchViewController: UIViewController {
 
         categoryFilterView.onSelectCategory = { [weak self] category in
             self?.selectedCategory = category
-            self?.applyPostFiltering(with: self?.searchInputView.currentText.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
+            let keyword = self?.searchInputView.currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+            self?.fetchPosts(keyword: keyword)
         }
-    }
-
-    private func bindContent() {
-        filteredPosts = allPosts
-        updateEmptyState()
-        resultCollectionView.reloadData()
     }
 
     private func didBeginEditingSearchField() {
@@ -170,15 +164,15 @@ final class SearchViewController: UIViewController {
     private func didChangeSearchTextField(text: String) {
         let keyword = text.trimmingCharacters(in: .whitespacesAndNewlines)
         filteredResults = makeAutoCompleteResults(with: keyword)
-        applyPostFiltering(with: keyword)
 
         if filteredResults.isEmpty {
             hideAutoComplete()
-            return
+        } else {
+            autoCompleteView.update(results: filteredResults, keyword: keyword)
+            updateAutoCompleteVisibility()
         }
 
-        autoCompleteView.update(results: filteredResults, keyword: keyword)
-        updateAutoCompleteVisibility()
+        fetchPosts(keyword: keyword)
     }
 
     @objc
@@ -199,22 +193,57 @@ final class SearchViewController: UIViewController {
     private func applyAutoComplete(text: String) {
         searchInputView.setText(text)
         filteredResults = makeAutoCompleteResults(with: text)
-        applyPostFiltering(with: text)
+        fetchPosts(keyword: text)
         searchInputView.endEditing(true)
         hideAutoComplete()
     }
 
-    private func applyPostFiltering(with keyword: String) {
-        filteredPosts = allPosts.filter { post in
-            let matchesKeyword = keyword.isEmpty
-                || post.title.contains(keyword)
-                || post.content.contains(keyword)
-            let matchesCategory = selectedCategory == nil || post.category == selectedCategory
-            return matchesKeyword && matchesCategory
+    private func fetchPosts(keyword: String?) {
+        searchTask?.cancel()
+
+        let trimmedKeyword = keyword?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = (trimmedKeyword?.isEmpty == false) ? trimmedKeyword : nil
+
+        searchTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let posts = try await tipService.listTips(
+                    category: selectedCategory,
+                    page: 1,
+                    search: query
+                )
+
+                guard !Task.isCancelled else { return }
+                self.allPosts = posts
+                self.filteredPosts = posts
+                self.updateAutoCompleteSource(keyword: query)
+                self.updateEmptyState()
+                self.resultCollectionView.reloadData()
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.filteredPosts = []
+                self.updateEmptyState()
+                self.resultCollectionView.reloadData()
+                self.showSearchFailedAlert(error)
+            }
+        }
+    }
+
+    private func updateAutoCompleteSource(keyword: String?) {
+        guard let keyword, !keyword.isEmpty else {
+            filteredResults = []
+            hideAutoComplete()
+            return
         }
 
-        updateEmptyState()
-        resultCollectionView.reloadData()
+        filteredResults = makeAutoCompleteResults(with: keyword)
+        if filteredResults.isEmpty {
+            hideAutoComplete()
+        } else {
+            autoCompleteView.update(results: filteredResults, keyword: keyword)
+            updateAutoCompleteVisibility()
+        }
     }
 
     private func updateEmptyState() {
@@ -231,6 +260,16 @@ final class SearchViewController: UIViewController {
             let isInserted = seenTitles.insert(post.title).inserted
             return isInserted ? post.title : nil
         }
+    }
+
+    private func showSearchFailedAlert(_ error: Error) {
+        let alert = UIAlertController(
+            title: "검색 실패",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
     }
 }
 
@@ -249,5 +288,11 @@ extension SearchViewController: UICollectionViewDataSource, UICollectionViewDele
 
         cell.configure(with: filteredPosts[indexPath.item])
         return cell
+    }
+
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let selectedPost = filteredPosts[indexPath.item]
+        let detailViewController = DetailViewController(post: selectedPost)
+        navigationController?.pushViewController(detailViewController, animated: true)
     }
 }

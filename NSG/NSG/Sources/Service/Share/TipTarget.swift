@@ -6,6 +6,7 @@ enum TipTarget {
     case list(category: String?, page: Int?, search: String?)
     case detail(id: String)
     case create(CreateTipRequest)
+    case toggleLike(postID: String)
 }
 
 extension TipTarget: TargetType {
@@ -22,6 +23,8 @@ extension TipTarget: TargetType {
             return "/posts/tips/\(id)/"
         case .create:
             return "/posts/tips/create/"
+        case .toggleLike(let postID):
+            return "/posts/\(postID)/like/"
         }
     }
 
@@ -29,7 +32,7 @@ extension TipTarget: TargetType {
         switch self {
         case .list, .detail:
             return Moya.Method.get
-        case .create:
+        case .create, .toggleLike:
             return Moya.Method.post
         }
     }
@@ -53,6 +56,8 @@ extension TipTarget: TargetType {
             return .requestPlain
         case .create(let request):
             return .requestJSONEncodable(request)
+        case .toggleLike:
+            return .requestPlain
         }
     }
 

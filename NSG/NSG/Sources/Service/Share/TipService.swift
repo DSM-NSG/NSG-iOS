@@ -5,6 +5,7 @@ protocol TipServicing {
     func listTips(category: String?, page: Int?, search: String?) async throws -> [SharePost]
     func tipDetail(id: String) async throws -> SharePost
     func createTip(request: CreateTipRequest) async throws -> SharePost
+    func toggleLike(postID: String) async throws -> TipLikeToggleResponse
 }
 
 @MainActor
@@ -93,6 +94,26 @@ final class TipService: TipServicing {
                                 )
                             )
                         }
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func toggleLike(postID: String) async throws -> TipLikeToggleResponse {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.toggleLike(postID: postID)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoded = try JSONDecoder().decode(TipLikeToggleResponse.self, from: filteredResponse.data)
+                        continuation.resume(returning: decoded)
                     } catch {
                         continuation.resume(throwing: error)
                     }
