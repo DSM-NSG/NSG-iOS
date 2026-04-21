@@ -12,6 +12,7 @@ final class NSGSingleTextField: UIView {
 
     var onTextChanged: (() -> Void)?
     var text: String { textField.text ?? "" }
+    var textFieldRef: UITextField { textField }
 
     private let textField = UITextField().then {
         $0.font = .systemFont(ofSize: 14)
@@ -35,6 +36,15 @@ final class NSGSingleTextField: UIView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    func setText(_ value: String?) {
+        textField.text = value
+        onTextChanged?()
+    }
+
+    func resignFirstResponder() {
+        textField.resignFirstResponder()
+    }
 
     @objc private func textDidChange() { onTextChanged?() }
 

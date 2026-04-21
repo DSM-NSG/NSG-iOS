@@ -73,6 +73,51 @@ struct CreateMajorPostRequest: Encodable {
     }
 }
 
+struct CreatePlaceRequest: Encodable {
+    let title: String
+    let description: String
+    let category: String
+    let latitude: Double
+    let longitude: Double
+    let naverMapURL: String
+    let isAnonymous: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case description
+        case category
+        case latitude
+        case longitude
+        case naverMapURL = "naver_map_url"
+        case isAnonymous = "is_anonymous"
+    }
+}
+
+struct CreatePlaceResponse: Decodable {
+    let id: String
+    let title: String
+}
+
+struct PlaceListResponseItem: Decodable {
+    let id: String
+    let title: String
+    let description: String
+    let category: String
+    let latitude: Double
+    let longitude: Double
+    let naverMapURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case description
+        case category
+        case latitude
+        case longitude
+        case naverMapURL = "naver_map_url"
+    }
+}
+
 struct TipListResponseItem: Decodable {
     let id: String
     let author: String

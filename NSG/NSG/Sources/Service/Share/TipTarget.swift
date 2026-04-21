@@ -3,10 +3,12 @@ import Moya
 import Alamofire
 
 enum TipTarget {
+    case places(category: String?)
     case list(category: String?, page: Int?, search: String?)
     case detail(id: String)
     case majors
     case uploadImage(data: Data, fileName: String, mimeType: String)
+    case createPlace(CreatePlaceRequest)
     case create(CreateTipRequest)
     case createMajor(CreateMajorPostRequest)
     case toggleLike(postID: String)
@@ -21,6 +23,8 @@ extension TipTarget: TargetType {
 
     var path: String {
         switch self {
+        case .places:
+            return "/"
         case .list:
             return "/posts/tips/"
         case .detail(let id):
@@ -29,6 +33,8 @@ extension TipTarget: TargetType {
             return "/majors/"
         case .uploadImage:
             return "/images/upload/"
+        case .createPlace:
+            return "/"
         case .create:
             return "/posts/tips/create/"
         case .createMajor:
@@ -42,9 +48,9 @@ extension TipTarget: TargetType {
 
     var method: Moya.Method {
         switch self {
-        case .list, .detail, .majors:
+        case .list, .detail, .majors, .places:
             return Moya.Method.get
-        case .create, .createMajor, .toggleLike, .uploadImage:
+        case .create, .createMajor, .toggleLike, .uploadImage, .createPlace:
             return Moya.Method.post
         case .deleteTip:
             return Moya.Method.delete
@@ -53,6 +59,12 @@ extension TipTarget: TargetType {
 
     var task: Task {
         switch self {
+        case .places(let category):
+            var params: [String: Any] = [:]
+            if let category, !category.isEmpty {
+                params["category"] = category
+            }
+            return .requestParameters(parameters: params, encoding: URLEncoding.queryString)
         case .list(let category, let page, let search):
             var params: [String: Any] = [:]
             if let category, !category.isEmpty {
@@ -76,6 +88,8 @@ extension TipTarget: TargetType {
                 mimeType: mimeType
             )
             return .uploadMultipart([multipartData])
+        case .createPlace(let request):
+            return .requestJSONEncodable(request)
         case .create(let request):
             return .requestJSONEncodable(request)
         case .createMajor(let request):
@@ -95,6 +109,10 @@ extension TipTarget: TargetType {
         }
 
         if case .createMajor = self {
+            headers["Content-Type"] = "application/json"
+        }
+
+        if case .createPlace = self {
             headers["Content-Type"] = "application/json"
         }
 

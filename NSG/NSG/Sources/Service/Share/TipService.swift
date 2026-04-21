@@ -2,10 +2,12 @@ import Foundation
 import Moya
 
 protocol TipServicing {
+    func listPlaces(category: String?) async throws -> [PlaceListResponseItem]
     func listTips(category: String?, page: Int?, search: String?) async throws -> [SharePost]
     func tipDetail(id: String) async throws -> SharePost
     func majors() async throws -> [MajorCategory]
     func uploadImage(data: Data, fileName: String, mimeType: String) async throws -> String
+    func createPlace(request: CreatePlaceRequest) async throws -> CreatePlaceResponse
     func createTip(request: CreateTipRequest) async throws -> SharePost
     func createMajorPost(request: CreateMajorPostRequest) async throws -> SharePost
     func toggleLike(postID: String) async throws -> TipLikeToggleResponse
@@ -26,6 +28,25 @@ final class TipService: TipServicing {
     convenience init() {
         let provider = MoyaProvider<TipTarget>(plugins: [MoyaLoggingPlugin()])
         self.init(provider: provider)
+    }
+
+    func listPlaces(category: String?) async throws -> [PlaceListResponseItem] {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.places(category: category)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoded = try JSONDecoder().decode([PlaceListResponseItem].self, from: filteredResponse.data)
+                        continuation.resume(returning: decoded)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     func listTips(category: String?, page: Int?, search: String?) async throws -> [SharePost] {
@@ -110,6 +131,25 @@ final class TipService: TipServicing {
                         continuation.resume(throwing: error)
                     }
 
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func createPlace(request: CreatePlaceRequest) async throws -> CreatePlaceResponse {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.createPlace(request)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoded = try JSONDecoder().decode(CreatePlaceResponse.self, from: filteredResponse.data)
+                        continuation.resume(returning: decoded)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 case .failure(let error):
                     continuation.resume(throwing: error)
                 }
