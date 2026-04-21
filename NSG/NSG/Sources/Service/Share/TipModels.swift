@@ -5,7 +5,12 @@ struct MajorCategory: Decodable, Equatable {
     let name: String
 }
 
+struct UploadImageResponse: Decodable {
+    let url: String
+}
+
 struct TipAuthor: Decodable {
+    let id: String?
     let grade: Int?
     let classNum: Int?
     let num: Int?
@@ -13,11 +18,24 @@ struct TipAuthor: Decodable {
     let anonymousNumber: Int?
 
     enum CodingKeys: String, CodingKey {
+        case id
+        case authorID = "author_id"
         case grade
         case classNum = "class_num"
         case num
         case name
         case anonymousNumber = "anonymous_number"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(String.self, forKey: .id))
+            ?? (try? container.decode(String.self, forKey: .authorID))
+        grade = try? container.decode(Int.self, forKey: .grade)
+        classNum = try? container.decode(Int.self, forKey: .classNum)
+        num = try? container.decode(Int.self, forKey: .num)
+        name = try? container.decode(String.self, forKey: .name)
+        anonymousNumber = try? container.decode(Int.self, forKey: .anonymousNumber)
     }
 }
 
@@ -58,6 +76,7 @@ struct CreateMajorPostRequest: Encodable {
 struct TipListResponseItem: Decodable {
     let id: String
     let author: String
+    let authorID: String?
     let title: String
     let body: String
     let category: String
@@ -70,6 +89,7 @@ struct TipListResponseItem: Decodable {
     enum CodingKeys: String, CodingKey {
         case id
         case author
+        case authorID = "author_id"
         case title
         case body
         case category
@@ -84,6 +104,7 @@ struct TipListResponseItem: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         author = container.decodeFlexibleAuthor(forKey: .author)
+        authorID = container.decodeFlexibleAuthorID(authorKey: .author, authorIDKey: .authorID)
         title = try container.decode(String.self, forKey: .title)
         body = (try? container.decode(String.self, forKey: .body)) ?? ""
         category = try container.decode(String.self, forKey: .category)
@@ -184,6 +205,7 @@ struct TipDetailResponse: Decodable {
 
     let id: String
     let author: String
+    let authorID: String?
     let title: String
     let body: String
     let category: String
@@ -199,6 +221,7 @@ struct TipDetailResponse: Decodable {
     enum CodingKeys: String, CodingKey {
         case id
         case author
+        case authorID = "author_id"
         case title
         case body
         case category
@@ -216,6 +239,7 @@ struct TipDetailResponse: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         author = container.decodeFlexibleAuthor(forKey: .author)
+        authorID = container.decodeFlexibleAuthorID(authorKey: .author, authorIDKey: .authorID)
         title = try container.decode(String.self, forKey: .title)
         body = try container.decode(String.self, forKey: .body)
         category = try container.decode(String.self, forKey: .category)
@@ -280,5 +304,17 @@ private extension KeyedDecodingContainer {
         }
 
         return "익명"
+    }
+
+    func decodeFlexibleAuthorID(authorKey: K, authorIDKey: K) -> String? {
+        if let authorID = try? decode(String.self, forKey: authorIDKey) {
+            return authorID
+        }
+
+        if let author = try? decode(TipAuthor.self, forKey: authorKey) {
+            return author.id
+        }
+
+        return nil
     }
 }

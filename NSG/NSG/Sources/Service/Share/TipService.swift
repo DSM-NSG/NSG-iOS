@@ -5,9 +5,11 @@ protocol TipServicing {
     func listTips(category: String?, page: Int?, search: String?) async throws -> [SharePost]
     func tipDetail(id: String) async throws -> SharePost
     func majors() async throws -> [MajorCategory]
+    func uploadImage(data: Data, fileName: String, mimeType: String) async throws -> String
     func createTip(request: CreateTipRequest) async throws -> SharePost
     func createMajorPost(request: CreateMajorPostRequest) async throws -> SharePost
     func toggleLike(postID: String) async throws -> TipLikeToggleResponse
+    func deleteTip(id: String) async throws
 }
 
 @MainActor
@@ -84,6 +86,26 @@ final class TipService: TipServicing {
                         let filteredResponse = try response.filterSuccessfulStatusCodes()
                         let decoded = try JSONDecoder().decode([MajorCategory].self, from: filteredResponse.data)
                         continuation.resume(returning: decoded)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func uploadImage(data: Data, fileName: String, mimeType: String) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.uploadImage(data: data, fileName: fileName, mimeType: mimeType)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoded = try JSONDecoder().decode(UploadImageResponse.self, from: filteredResponse.data)
+                        continuation.resume(returning: decoded.url)
                     } catch {
                         continuation.resume(throwing: error)
                     }
@@ -178,10 +200,30 @@ final class TipService: TipServicing {
         }
     }
 
+    func deleteTip(id: String) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.deleteTip(id: id)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        _ = try response.filterSuccessfulStatusCodes()
+                        continuation.resume(returning: ())
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     private static func mapListItemToSharePost(_ item: TipListResponseItem) -> SharePost {
         SharePost(
             id: item.id,
             author: item.author,
+            authorID: item.authorID,
             title: item.title,
             content: item.body,
             category: mapCategoryFromAPI(item.category),
@@ -215,6 +257,7 @@ final class TipService: TipServicing {
         return SharePost(
             id: detail.id,
             author: detail.author,
+            authorID: detail.authorID,
             title: detail.title,
             content: detail.body,
             category: mapCategoryFromAPI(detail.category),

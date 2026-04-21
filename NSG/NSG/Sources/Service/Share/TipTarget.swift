@@ -6,9 +6,11 @@ enum TipTarget {
     case list(category: String?, page: Int?, search: String?)
     case detail(id: String)
     case majors
+    case uploadImage(data: Data, fileName: String, mimeType: String)
     case create(CreateTipRequest)
     case createMajor(CreateMajorPostRequest)
     case toggleLike(postID: String)
+    case deleteTip(id: String)
 }
 
 extension TipTarget: TargetType {
@@ -25,12 +27,16 @@ extension TipTarget: TargetType {
             return "/posts/tips/\(id)/"
         case .majors:
             return "/majors/"
+        case .uploadImage:
+            return "/images/upload/"
         case .create:
             return "/posts/tips/create/"
         case .createMajor:
             return "/posts/major/create/"
         case .toggleLike(let postID):
             return "/posts/\(postID)/like/"
+        case .deleteTip(let id):
+            return "/posts/tips/\(id)/delete/"
         }
     }
 
@@ -38,8 +44,10 @@ extension TipTarget: TargetType {
         switch self {
         case .list, .detail, .majors:
             return Moya.Method.get
-        case .create, .createMajor, .toggleLike:
+        case .create, .createMajor, .toggleLike, .uploadImage:
             return Moya.Method.post
+        case .deleteTip:
+            return Moya.Method.delete
         }
     }
 
@@ -60,11 +68,19 @@ extension TipTarget: TargetType {
 
         case .detail, .majors:
             return .requestPlain
+        case .uploadImage(let data, let fileName, let mimeType):
+            let multipartData = MultipartFormData(
+                provider: .data(data),
+                name: "image",
+                fileName: fileName,
+                mimeType: mimeType
+            )
+            return .uploadMultipart([multipartData])
         case .create(let request):
             return .requestJSONEncodable(request)
         case .createMajor(let request):
             return .requestJSONEncodable(request)
-        case .toggleLike:
+        case .toggleLike, .deleteTip:
             return .requestPlain
         }
     }

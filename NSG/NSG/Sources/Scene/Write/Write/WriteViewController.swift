@@ -16,6 +16,17 @@ final class WriteViewController: UIViewController {
         let name: String
     }
 
+    private enum WriteUploadError: LocalizedError {
+        case invalidImageData
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidImageData:
+                return "이미지 변환에 실패했어요."
+            }
+        }
+    }
+
     private let tipType: TipType
     private let tipService: TipServicing
     private var selectedImages: [UIImage] = []
@@ -409,16 +420,6 @@ final class WriteViewController: UIViewController {
         let title = titleTextField.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = contentTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, !body.isEmpty else { return }
-        let uploadableImageURLs = selectedImageURLs.filter {
-            guard let url = URL(string: $0) else { return false }
-            let scheme = url.scheme?.lowercased()
-            return scheme == "http" || scheme == "https"
-        }
-
-        if !selectedImages.isEmpty && uploadableImageURLs.isEmpty {
-            showImageUploadGuideAlert()
-            return
-        }
 
         shareButton.isEnabled = false
 
@@ -426,6 +427,8 @@ final class WriteViewController: UIViewController {
             guard let self else { return }
 
             do {
+                let uploadableImageURLs = try await buildUploadableImageURLs()
+
                 if tipType == .major {
                     let request = CreateMajorPostRequest(
                         title: title,
@@ -458,6 +461,42 @@ final class WriteViewController: UIViewController {
         }
     }
 
+    private func buildUploadableImageURLs() async throws -> [String] {
+        var result: [String] = []
+
+        for (index, image) in selectedImages.enumerated() {
+            let sourceURL = index < selectedImageURLs.count ? selectedImageURLs[index] : nil
+            if let sourceURL, isRemoteURL(sourceURL) {
+                result.append(sourceURL)
+                continue
+            }
+
+            guard let data = image.jpegData(compressionQuality: 0.8) else {
+                throw WriteUploadError.invalidImageData
+            }
+            let fileName = "\(UUID().uuidString).jpg"
+            let uploadedURL = try await tipService.uploadImage(
+                data: data,
+                fileName: fileName,
+                mimeType: "image/jpeg"
+            )
+            result.append(uploadedURL)
+        }
+
+        for sourceURL in selectedImageURLs where isRemoteURL(sourceURL) && !result.contains(sourceURL) {
+            result.append(sourceURL)
+        }
+
+        return result
+    }
+
+    private func isRemoteURL(_ raw: String) -> Bool {
+        guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else {
+            return false
+        }
+        return scheme == "http" || scheme == "https"
+    }
+
     private func showCreatedAlert() {
         let alert = UIAlertController(
             title: "작성 완료",
@@ -474,16 +513,6 @@ final class WriteViewController: UIViewController {
         let alert = UIAlertController(
             title: "작성 실패",
             message: error.localizedDescription,
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "확인", style: .default))
-        present(alert, animated: true)
-    }
-
-    private func showImageUploadGuideAlert() {
-        let alert = UIAlertController(
-            title: "이미지 전송 불가",
-            message: "현재 선택한 이미지는 로컬 파일이라 image_urls로 전송할 수 없어요.\n서버 이미지 업로드 API가 연결되면 함께 전송할 수 있습니다.",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "확인", style: .default))

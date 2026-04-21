@@ -22,6 +22,9 @@ final class DetailViewController: UIViewController {
     private let commentService: CommentServicing
     private let tipService: TipServicing
     private var isLikeRequesting = false
+    private var isDeleteRequesting = false
+    private var contentImageLoadTask: Task<Void, Never>?
+    private var loadingImageURLString: String?
     private var commentInputBottomConstraint: Constraint?
     private var contentImageTopConstraint: Constraint?
     private var contentImageHeightConstraint: Constraint?
@@ -47,6 +50,12 @@ final class DetailViewController: UIViewController {
         $0.textColor = .black800
     }
 
+    private let deleteButton = UIButton(type: .system).then {
+        $0.setImage(UIImage(named: "delete") ?? UIImage(systemName: "trash"), for: .normal)
+        $0.tintColor = .black500
+        $0.isHidden = true
+    }
+
     private let titleLabel = UILabel().then {
         $0.font = .style(.header1)
         $0.textColor = .black800
@@ -60,7 +69,6 @@ final class DetailViewController: UIViewController {
     }
 
     private let contentImageView = UIImageView().then {
-        $0.image = UIImage(named: "school")
         $0.contentMode = .scaleAspectFill
         $0.clipsToBounds = true
         $0.layer.cornerRadius = 8
@@ -146,6 +154,7 @@ final class DetailViewController: UIViewController {
         setLayout()
         configureContent()
         bindLikeAction()
+        deleteButton.addTarget(self, action: #selector(didTapDeleteButton), for: .touchUpInside)
         commentTextField.delegate = self
         sendButton.addTarget(self, action: #selector(didTapSendButton), for: .touchUpInside)
         enableKeyboardDismissOnTap()
@@ -182,6 +191,7 @@ final class DetailViewController: UIViewController {
         [
             profileImageView,
             nameLabel,
+            deleteButton,
             titleLabel,
             contentLabel,
             contentImageView,
@@ -222,6 +232,13 @@ final class DetailViewController: UIViewController {
         nameLabel.snp.makeConstraints {
             $0.leading.equalTo(profileImageView.snp.trailing).offset(12)
             $0.centerY.equalTo(profileImageView)
+            $0.trailing.lessThanOrEqualTo(deleteButton.snp.leading).offset(-8)
+        }
+
+        deleteButton.snp.makeConstraints {
+            $0.trailing.equalToSuperview().inset(24)
+            $0.centerY.equalTo(profileImageView)
+            $0.size.equalTo(24)
         }
 
         titleLabel.snp.makeConstraints {
@@ -276,12 +293,22 @@ final class DetailViewController: UIViewController {
 
         let hasImage = (post.imageURLs.first?.isEmpty == false) || post.hasImages
         updateImageSection(hasImage: hasImage)
+        loadContentImageIfNeeded(urlString: post.imageURLs.first)
 
         if reactionStackView.arrangedSubviews.isEmpty {
             [heartReactionView, commentReactionView].forEach { reactionStackView.addArrangedSubview($0) }
         }
+        updateDeleteButtonVisibility()
         commentTextField.placeholder = defaultCommentPlaceholder
         renderComments()
+    }
+
+    private func updateDeleteButtonVisibility() {
+        guard let currentUserID = AuthTokenStore.shared.currentUser?.id else {
+            deleteButton.isHidden = true
+            return
+        }
+        deleteButton.isHidden = post.authorID?.lowercased() != currentUserID.lowercased()
     }
 
     private func updateImageSection(hasImage: Bool) {
@@ -289,6 +316,39 @@ final class DetailViewController: UIViewController {
         contentImageTopConstraint?.update(offset: hasImage ? 16 : 0)
         contentImageHeightConstraint?.update(offset: hasImage ? 220 : 0)
         view.layoutIfNeeded()
+    }
+
+    private func loadContentImageIfNeeded(urlString: String?) {
+        contentImageLoadTask?.cancel()
+
+        guard let urlString,
+              let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            loadingImageURLString = nil
+            contentImageView.image = nil
+            return
+        }
+
+        loadingImageURLString = urlString
+        contentImageView.image = nil
+
+        contentImageLoadTask = Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard !Task.isCancelled else { return }
+                guard self.loadingImageURLString == urlString else { return }
+                if let image = UIImage(data: data) {
+                    self.contentImageView.image = image
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                guard self.loadingImageURLString == urlString else { return }
+                self.contentImageView.image = nil
+            }
+        }
     }
 
     private func bindLikeAction() {
@@ -339,6 +399,7 @@ final class DetailViewController: UIViewController {
         post = SharePost(
             id: post.id,
             author: post.author,
+            authorID: post.authorID,
             title: post.title,
             content: post.content,
             category: post.category,
@@ -383,6 +444,21 @@ final class DetailViewController: UIViewController {
     @objc
     private func didTapBack() {
         navigationController?.popViewController(animated: true)
+    }
+
+    @objc
+    private func didTapDeleteButton() {
+        guard !isDeleteRequesting else { return }
+        let popupView = NSGPopupView(
+            title: "게시글 삭제",
+            message: "정말 이 게시글을 삭제하시겠습니까?",
+            cancelButtonTitle: "취소",
+            confirmButtonTitle: "삭제",
+            confirmAction: { [weak self] in
+                self?.deletePost()
+            }
+        )
+        popupView.show(in: view)
     }
 
     @objc
@@ -470,6 +546,7 @@ final class DetailViewController: UIViewController {
         post = SharePost(
             id: post.id,
             author: post.author,
+            authorID: post.authorID,
             title: post.title,
             content: post.content,
             category: post.category,
@@ -484,6 +561,25 @@ final class DetailViewController: UIViewController {
             comments: post.comments + [newShareComment]
         )
         renderComments()
+    }
+
+    private func deletePost() {
+        guard let postID = post.id, !postID.isEmpty else { return }
+        isDeleteRequesting = true
+        deleteButton.isEnabled = false
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                try await self.tipService.deleteTip(id: postID)
+                self.navigationController?.popViewController(animated: true)
+            } catch {
+                self.isDeleteRequesting = false
+                self.deleteButton.isEnabled = true
+                self.showPostDeleteFailedAlert(error)
+            }
+        }
     }
 
     private func renderComments() {
@@ -544,6 +640,16 @@ final class DetailViewController: UIViewController {
     private func showLikeToggleFailedAlert(_ error: Error) {
         let alert = UIAlertController(
             title: "좋아요 실패",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func showPostDeleteFailedAlert(_ error: Error) {
+        let alert = UIAlertController(
+            title: "게시글 삭제 실패",
             message: error.localizedDescription,
             preferredStyle: .alert
         )

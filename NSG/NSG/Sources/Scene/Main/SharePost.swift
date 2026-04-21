@@ -16,6 +16,7 @@ struct ShareComment {
 struct SharePost {
     let id: String?
     let author: String?
+    let authorID: String?
     let title: String
     let content: String
     let category: String
@@ -32,6 +33,7 @@ struct SharePost {
     init(
         id: String? = nil,
         author: String? = nil,
+        authorID: String? = nil,
         title: String,
         content: String,
         category: String,
@@ -47,6 +49,7 @@ struct SharePost {
     ) {
         self.id = id
         self.author = author
+        self.authorID = authorID
         self.title = title
         self.content = content
         self.category = category
