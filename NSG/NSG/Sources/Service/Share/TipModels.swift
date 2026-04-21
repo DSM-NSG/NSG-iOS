@@ -1,16 +1,23 @@
 import Foundation
 
+struct MajorCategory: Decodable, Equatable {
+    let id: String
+    let name: String
+}
+
 struct TipAuthor: Decodable {
     let grade: Int?
     let classNum: Int?
     let num: Int?
     let name: String?
+    let anonymousNumber: Int?
 
     enum CodingKeys: String, CodingKey {
         case grade
         case classNum = "class_num"
         case num
         case name
+        case anonymousNumber = "anonymous_number"
     }
 }
 
@@ -32,12 +39,30 @@ struct CreateTipRequest: Encodable {
     }
 }
 
+struct CreateMajorPostRequest: Encodable {
+    let title: String
+    let body: String
+    let majorIDs: [String]
+    let isAnonymous: Bool
+    let imageURLs: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case body
+        case majorIDs = "major_ids"
+        case isAnonymous = "is_anonymous"
+        case imageURLs = "image_urls"
+    }
+}
+
 struct TipListResponseItem: Decodable {
     let id: String
     let author: String
     let title: String
+    let body: String
     let category: String
     let likeCount: Int
+    let isLiked: Bool
     let commentCount: Int
     let hasImages: Bool
     let createdAt: String
@@ -46,8 +71,10 @@ struct TipListResponseItem: Decodable {
         case id
         case author
         case title
+        case body
         case category
         case likeCount = "like_count"
+        case isLiked = "is_liked"
         case commentCount = "comment_count"
         case hasImages = "has_images"
         case createdAt = "created_at"
@@ -58,8 +85,10 @@ struct TipListResponseItem: Decodable {
         id = try container.decode(String.self, forKey: .id)
         author = container.decodeFlexibleAuthor(forKey: .author)
         title = try container.decode(String.self, forKey: .title)
+        body = (try? container.decode(String.self, forKey: .body)) ?? ""
         category = try container.decode(String.self, forKey: .category)
         likeCount = container.decodeFlexibleInt(forKey: .likeCount)
+        isLiked = container.decodeFlexibleBool(forKey: .isLiked)
         commentCount = container.decodeFlexibleInt(forKey: .commentCount)
         hasImages = container.decodeFlexibleBool(forKey: .hasImages)
         createdAt = (try? container.decode(String.self, forKey: .createdAt)) ?? ""
@@ -100,6 +129,59 @@ struct TipDetailResponse: Decodable {
         }
     }
 
+    struct Reply: Decodable {
+        let id: String
+        let author: String
+        let content: String
+        let isAnonymous: Bool
+        let createdAt: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case author
+            case content
+            case isAnonymous = "is_anonymous"
+            case createdAt = "created_at"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            author = container.decodeFlexibleAuthor(forKey: .author)
+            content = (try? container.decode(String.self, forKey: .content)) ?? ""
+            isAnonymous = container.decodeFlexibleBool(forKey: .isAnonymous)
+            createdAt = try? container.decode(String.self, forKey: .createdAt)
+        }
+    }
+
+    struct Comment: Decodable {
+        let id: String
+        let author: String
+        let content: String
+        let isAnonymous: Bool
+        let createdAt: String?
+        let replies: [Reply]
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case author
+            case content
+            case isAnonymous = "is_anonymous"
+            case createdAt = "created_at"
+            case replies
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            author = container.decodeFlexibleAuthor(forKey: .author)
+            content = (try? container.decode(String.self, forKey: .content)) ?? ""
+            isAnonymous = container.decodeFlexibleBool(forKey: .isAnonymous)
+            createdAt = try? container.decode(String.self, forKey: .createdAt)
+            replies = (try? container.decode([Reply].self, forKey: .replies)) ?? []
+        }
+    }
+
     let id: String
     let author: String
     let title: String
@@ -110,6 +192,8 @@ struct TipDetailResponse: Decodable {
     let likeCount: Int
     let isLiked: Bool
     let images: [Image]
+    let commentCount: Int?
+    let comments: [Comment]
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
@@ -123,6 +207,8 @@ struct TipDetailResponse: Decodable {
         case likeCount = "like_count"
         case isLiked = "is_liked"
         case images
+        case commentCount = "comment_count"
+        case comments
         case createdAt = "created_at"
     }
 
@@ -138,6 +224,12 @@ struct TipDetailResponse: Decodable {
         likeCount = container.decodeFlexibleInt(forKey: .likeCount)
         isLiked = container.decodeFlexibleBool(forKey: .isLiked)
         images = (try? container.decode([Image].self, forKey: .images)) ?? []
+        if container.contains(.commentCount) {
+            commentCount = container.decodeFlexibleInt(forKey: .commentCount)
+        } else {
+            commentCount = nil
+        }
+        comments = (try? container.decode([Comment].self, forKey: .comments)) ?? []
         createdAt = (try? container.decode(String.self, forKey: .createdAt)) ?? ""
     }
 }
@@ -177,6 +269,9 @@ private extension KeyedDecodingContainer {
         }
 
         if let authorObject = try? decode(TipAuthor.self, forKey: key) {
+            if authorObject.anonymousNumber != nil {
+                return "익명"
+            }
             let baseName = authorObject.name ?? "익명"
             if let grade = authorObject.grade {
                 return "\(baseName) \(grade)기"

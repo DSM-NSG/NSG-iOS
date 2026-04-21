@@ -41,6 +41,10 @@ struct CreateCommentResponse: Decodable {
         if let authorString = try? container.decode(String.self, forKey: .author) {
             author = authorString
         } else if let authorObject = try? container.decode(TipAuthor.self, forKey: .author) {
+            if authorObject.anonymousNumber != nil {
+                author = "익명"
+                return
+            }
             let baseName = authorObject.name ?? "익명"
             if let grade = authorObject.grade {
                 author = "\(baseName) \(grade)기"

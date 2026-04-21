@@ -14,6 +14,7 @@ final class ShareViewController: UIViewController {
     private var selectedCategory: String?
     private var popularPosts: [SharePost] = []
     private var latestPosts: [SharePost] = []
+    private var isLikeRequestingPostIDs: Set<String> = []
     private let tipService: TipServicing
 
     private let scrollView = UIScrollView().then {
@@ -132,6 +133,10 @@ final class ShareViewController: UIViewController {
         setLayout()
         configureUI()
         updateUserInfo()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
         fetchTips()
     }
 
@@ -299,6 +304,82 @@ final class ShareViewController: UIViewController {
         latestCollectionHeightConstraint?.update(offset: latestCollectionView.collectionViewLayout.collectionViewContentSize.height)
     }
 
+    private func handleLikeToggle(postID: String, isLiked: Bool, likeCount: Int) {
+        guard !isLikeRequestingPostIDs.contains(postID) else {
+            bindContent()
+            return
+        }
+
+        isLikeRequestingPostIDs.insert(postID)
+
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let response = try await tipService.toggleLike(postID: postID)
+                await MainActor.run {
+                    self.applyLikeUpdate(
+                        postID: postID,
+                        isLiked: response.isLiked,
+                        likeCount: response.likeCount
+                    )
+                    self.bindContent()
+                    self.isLikeRequestingPostIDs.remove(postID)
+                }
+            } catch {
+                await MainActor.run {
+                    self.applyLikeUpdate(
+                        postID: postID,
+                        isLiked: !isLiked,
+                        likeCount: max(0, isLiked ? (likeCount - 1) : (likeCount + 1))
+                    )
+                    self.bindContent()
+                    self.isLikeRequestingPostIDs.remove(postID)
+                }
+            }
+        }
+    }
+
+    private func applyLikeUpdate(postID: String, isLiked: Bool, likeCount: Int) {
+        latestPosts = latestPosts.map { post in
+            guard post.id == postID else { return post }
+            return SharePost(
+                id: post.id,
+                author: post.author,
+                title: post.title,
+                content: post.content,
+                category: post.category,
+                likeCount: likeCount,
+                commentCount: post.commentCount,
+                hasImages: post.hasImages,
+                createdAt: post.createdAt,
+                place: post.place,
+                isAnonymous: post.isAnonymous,
+                isLiked: isLiked,
+                imageURLs: post.imageURLs
+            )
+        }
+
+        popularPosts = popularPosts.map { post in
+            guard post.id == postID else { return post }
+            return SharePost(
+                id: post.id,
+                author: post.author,
+                title: post.title,
+                content: post.content,
+                category: post.category,
+                likeCount: likeCount,
+                commentCount: post.commentCount,
+                hasImages: post.hasImages,
+                createdAt: post.createdAt,
+                place: post.place,
+                isAnonymous: post.isAnonymous,
+                isLiked: isLiked,
+                imageURLs: post.imageURLs
+            )
+        }
+    }
+
     private func presentLoadError(_ error: Error) {
         let alert = UIAlertController(
             title: "게시글 불러오기 실패",
@@ -343,6 +424,9 @@ extension ShareViewController: UICollectionViewDataSource, UICollectionViewDeleg
             }
 
             cell.configure(with: popularPosts[indexPath.item])
+            cell.onToggleLike = { [weak self] postID, isLiked, likeCount in
+                self?.handleLikeToggle(postID: postID, isLiked: isLiked, likeCount: likeCount)
+            }
             return cell
         }
 
@@ -354,6 +438,9 @@ extension ShareViewController: UICollectionViewDataSource, UICollectionViewDeleg
         }
 
         cell.configure(with: latestPosts[indexPath.item])
+        cell.onToggleLike = { [weak self] postID, isLiked, likeCount in
+            self?.handleLikeToggle(postID: postID, isLiked: isLiked, likeCount: likeCount)
+        }
         return cell
     }
 

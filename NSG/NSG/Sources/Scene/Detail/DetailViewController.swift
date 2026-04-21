@@ -23,6 +23,8 @@ final class DetailViewController: UIViewController {
     private let tipService: TipServicing
     private var isLikeRequesting = false
     private var commentInputBottomConstraint: Constraint?
+    private var contentImageTopConstraint: Constraint?
+    private var contentImageHeightConstraint: Constraint?
     private var replyTargetComment: DetailComment?
     private let defaultCommentPlaceholder = "댓글을 작성하세요."
     private var comments: [DetailComment] = []
@@ -40,7 +42,7 @@ final class DetailViewController: UIViewController {
     }
 
     private let nameLabel = UILabel().then {
-        $0.text = "익명2"
+        $0.text = ""
         $0.font = .style(.body2)
         $0.textColor = .black800
     }
@@ -143,7 +145,6 @@ final class DetailViewController: UIViewController {
         addView()
         setLayout()
         configureContent()
-        fetchTipDetailIfNeeded()
         bindLikeAction()
         commentTextField.delegate = self
         sendButton.addTarget(self, action: #selector(didTapSendButton), for: .touchUpInside)
@@ -151,6 +152,11 @@ final class DetailViewController: UIViewController {
         if let commentInputBottomConstraint {
             bindKeyboard(to: commentInputBottomConstraint, defaultInset: 10)
         }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        fetchTipDetailIfNeeded()
     }
 
     private func setupNavigationBar() {
@@ -229,10 +235,9 @@ final class DetailViewController: UIViewController {
         }
 
         contentImageView.snp.makeConstraints {
-            $0.top.equalTo(contentLabel.snp.bottom).offset(16)
+            contentImageTopConstraint = $0.top.equalTo(contentLabel.snp.bottom).offset(16).constraint
             $0.leading.trailing.equalToSuperview().inset(24)
-            $0.height.lessThanOrEqualTo(220)
-            $0.height.equalTo(contentImageView.snp.width).multipliedBy(0.6)
+            contentImageHeightConstraint = $0.height.equalTo(220).constraint
         }
 
         reactionStackView.snp.makeConstraints {
@@ -265,18 +270,25 @@ final class DetailViewController: UIViewController {
         contentLabel.text = post.content
         heartReactionView.configure(count: post.likeCount, isActivated: post.isLiked ?? false)
         commentReactionView.configure(count: post.commentCount)
-
-        if let imageURL = post.imageURLs.first, !imageURL.isEmpty {
-            contentImageView.isHidden = false
-        } else {
-            contentImageView.isHidden = !post.hasImages
+        comments = post.comments.map {
+            DetailComment(id: $0.id, author: $0.author, message: $0.content, isReply: $0.isReply)
         }
+
+        let hasImage = (post.imageURLs.first?.isEmpty == false) || post.hasImages
+        updateImageSection(hasImage: hasImage)
 
         if reactionStackView.arrangedSubviews.isEmpty {
             [heartReactionView, commentReactionView].forEach { reactionStackView.addArrangedSubview($0) }
         }
         commentTextField.placeholder = defaultCommentPlaceholder
         renderComments()
+    }
+
+    private func updateImageSection(hasImage: Bool) {
+        contentImageView.isHidden = !hasImage
+        contentImageTopConstraint?.update(offset: hasImage ? 16 : 0)
+        contentImageHeightConstraint?.update(offset: hasImage ? 220 : 0)
+        view.layoutIfNeeded()
     }
 
     private func bindLikeAction() {
@@ -337,7 +349,8 @@ final class DetailViewController: UIViewController {
             place: post.place,
             isAnonymous: post.isAnonymous,
             isLiked: isLiked,
-            imageURLs: post.imageURLs
+            imageURLs: post.imageURLs,
+            comments: post.comments
         )
     }
 
@@ -448,6 +461,28 @@ final class DetailViewController: UIViewController {
             isReply: isReply
         )
         comments.append(newComment)
+        let newShareComment = ShareComment(
+            id: response.id,
+            author: response.author,
+            content: response.content,
+            isReply: isReply
+        )
+        post = SharePost(
+            id: post.id,
+            author: post.author,
+            title: post.title,
+            content: post.content,
+            category: post.category,
+            likeCount: post.likeCount,
+            commentCount: isReply ? post.commentCount : post.commentCount + 1,
+            hasImages: post.hasImages,
+            createdAt: post.createdAt,
+            place: post.place,
+            isAnonymous: post.isAnonymous,
+            isLiked: post.isLiked,
+            imageURLs: post.imageURLs,
+            comments: post.comments + [newShareComment]
+        )
         renderComments()
     }
 

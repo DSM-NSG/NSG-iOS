@@ -5,7 +5,9 @@ import Alamofire
 enum TipTarget {
     case list(category: String?, page: Int?, search: String?)
     case detail(id: String)
+    case majors
     case create(CreateTipRequest)
+    case createMajor(CreateMajorPostRequest)
     case toggleLike(postID: String)
 }
 
@@ -21,8 +23,12 @@ extension TipTarget: TargetType {
             return "/posts/tips/"
         case .detail(let id):
             return "/posts/tips/\(id)/"
+        case .majors:
+            return "/majors/"
         case .create:
             return "/posts/tips/create/"
+        case .createMajor:
+            return "/posts/major/create/"
         case .toggleLike(let postID):
             return "/posts/\(postID)/like/"
         }
@@ -30,9 +36,9 @@ extension TipTarget: TargetType {
 
     var method: Moya.Method {
         switch self {
-        case .list, .detail:
+        case .list, .detail, .majors:
             return Moya.Method.get
-        case .create, .toggleLike:
+        case .create, .createMajor, .toggleLike:
             return Moya.Method.post
         }
     }
@@ -52,9 +58,11 @@ extension TipTarget: TargetType {
             }
             return .requestParameters(parameters: params, encoding: URLEncoding.queryString)
 
-        case .detail:
+        case .detail, .majors:
             return .requestPlain
         case .create(let request):
+            return .requestJSONEncodable(request)
+        case .createMajor(let request):
             return .requestJSONEncodable(request)
         case .toggleLike:
             return .requestPlain
@@ -67,6 +75,10 @@ extension TipTarget: TargetType {
         ]
 
         if case .create = self {
+            headers["Content-Type"] = "application/json"
+        }
+
+        if case .createMajor = self {
             headers["Content-Type"] = "application/json"
         }
 

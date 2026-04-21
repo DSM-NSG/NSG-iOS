@@ -11,10 +11,26 @@ import Then
 @MainActor
 final class WriteViewController: UIViewController {
 
+    private struct MajorChipItem: Equatable {
+        let id: String
+        let name: String
+    }
+
     private let tipType: TipType
     private let tipService: TipServicing
     private var selectedImages: [UIImage] = []
+    private var selectedImageURLs: [String] = []
+    private var allMajors: [MajorCategory] = []
+    private var filteredMajors: [MajorCategory] = []
+    private var selectedMajors: [MajorChipItem] = [] {
+        didSet {
+            renderSelectedMajorChips()
+            updateShareButtonState()
+        }
+    }
     private var shareButtonBottomConstraint: Constraint?
+    private var majorDropdownHeightConstraint: Constraint?
+    private var majorChipsHeightConstraint: Constraint?
     private var selectedCategory: LocationCategory? {
         didSet { updateShareButtonState() }
     }
@@ -37,6 +53,54 @@ final class WriteViewController: UIViewController {
         cv.delegate = self
         return cv
     }()
+
+    private let majorCategoryLabel = UILabel().then {
+        $0.text = "카테고리 추가하기"
+        $0.font = .style(.body4)
+        $0.textColor = .black500
+        $0.isHidden = true
+    }
+
+    private let majorTextFieldContainer = UIView().then {
+        $0.backgroundColor = .white
+        $0.layer.cornerRadius = 8
+        $0.layer.borderWidth = 1
+        $0.layer.borderColor = UIColor.orange300.cgColor
+        $0.isHidden = true
+    }
+
+    private let majorTextField = UITextField().then {
+        $0.font = .style(.body3)
+        $0.textColor = .black800
+        $0.tintColor = .orange500
+        $0.attributedPlaceholder = NSAttributedString(
+            string: "전공 카테고리를 검색해주세요.",
+            attributes: [.foregroundColor: UIColor.black400]
+        )
+        $0.returnKeyType = .done
+        $0.clearButtonMode = .whileEditing
+    }
+
+    private let majorChipsScrollView = UIScrollView().then {
+        $0.showsHorizontalScrollIndicator = false
+        $0.alwaysBounceHorizontal = true
+        $0.isHidden = true
+    }
+
+    private let majorChipsStackView = UIStackView().then {
+        $0.axis = .horizontal
+        $0.spacing = 6
+        $0.alignment = .center
+    }
+
+    private let majorDropdownTableView = UITableView(frame: .zero, style: .plain).then {
+        $0.backgroundColor = .white
+        $0.separatorStyle = .none
+        $0.layer.cornerRadius = 8
+        $0.clipsToBounds = true
+        $0.rowHeight = 40
+        $0.isHidden = true
+    }
     
     private let imageScrollView = UIScrollView().then {
         $0.showsHorizontalScrollIndicator = false
@@ -81,6 +145,10 @@ final class WriteViewController: UIViewController {
         setupUI()
         setupLayout()
         setupObservers()
+        if tipType == .major {
+            bindMajorCategoryUI()
+            fetchMajors()
+        }
         enableKeyboardDismissOnTap()
         if let shareButtonBottomConstraint {
             bindKeyboard(to: shareButtonBottomConstraint, defaultInset: 19)
@@ -110,6 +178,14 @@ final class WriteViewController: UIViewController {
             view.addSubview(categoryCollectionView)
         }
         view.addSubview(contentTextView)
+        if tipType.requiresMajorSelection {
+            view.addSubview(majorCategoryLabel)
+            view.addSubview(majorTextFieldContainer)
+            view.addSubview(majorChipsScrollView)
+            view.addSubview(majorDropdownTableView)
+            majorTextFieldContainer.addSubview(majorTextField)
+            majorChipsScrollView.addSubview(majorChipsStackView)
+        }
         view.addSubview(imageScrollView)
         view.addSubview(shareButton)
 
@@ -138,6 +214,39 @@ final class WriteViewController: UIViewController {
                 $0.height.equalTo(26)
             }
             anchorView = categoryCollectionView
+        } else if tipType.requiresMajorSelection {
+            majorCategoryLabel.snp.makeConstraints {
+                $0.top.equalTo(contentTextView.snp.bottom).offset(20)
+                $0.left.right.equalToSuperview().inset(23)
+            }
+
+            majorTextFieldContainer.snp.makeConstraints {
+                $0.top.equalTo(majorCategoryLabel.snp.bottom).offset(8)
+                $0.left.right.equalToSuperview().inset(23)
+                $0.height.equalTo(40)
+            }
+
+            majorTextField.snp.makeConstraints {
+                $0.edges.equalToSuperview().inset(UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12))
+            }
+
+            majorChipsScrollView.snp.makeConstraints {
+                $0.top.equalTo(majorTextFieldContainer.snp.bottom).offset(8)
+                $0.left.right.equalToSuperview().inset(23)
+                majorChipsHeightConstraint = $0.height.equalTo(0).constraint
+            }
+
+            majorChipsStackView.snp.makeConstraints {
+                $0.edges.equalToSuperview()
+                $0.height.equalToSuperview()
+            }
+
+            majorDropdownTableView.snp.makeConstraints {
+                $0.top.equalTo(majorChipsScrollView.snp.bottom).offset(8)
+                $0.left.right.equalToSuperview().inset(23)
+                majorDropdownHeightConstraint = $0.height.equalTo(0).constraint
+            }
+            anchorView = majorDropdownTableView
         } else {
             anchorView = contentTextView
         }
@@ -168,11 +277,101 @@ final class WriteViewController: UIViewController {
         titleTextField.onTextChanged = { [weak self] in self?.updateShareButtonState() }
         contentTextView.onTextChanged = { [weak self] in self?.updateShareButtonState() }
     }
+
+    private func bindMajorCategoryUI() {
+        majorCategoryLabel.isHidden = false
+        majorTextFieldContainer.isHidden = false
+        majorTextField.delegate = self
+        majorTextField.addTarget(self, action: #selector(didChangeMajorTextField), for: .editingChanged)
+        majorDropdownTableView.dataSource = self
+        majorDropdownTableView.delegate = self
+        majorDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "MajorCell")
+    }
+
+    private func fetchMajors() {
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let majors = try await tipService.majors()
+                self.allMajors = majors
+                self.filteredMajors = majors
+                self.reloadMajorDropdown()
+            } catch {
+                self.showMajorLoadFailedAlert(error)
+            }
+        }
+    }
+
+    @objc private func didChangeMajorTextField() {
+        filterMajors(with: majorTextField.text ?? "")
+    }
+
+    private func filterMajors(with query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmed.isEmpty {
+            filteredMajors = allMajors.filter { major in
+                !selectedMajors.contains(where: { $0.id == major.id })
+            }
+        } else {
+            filteredMajors = allMajors.filter { major in
+                let notSelected = !selectedMajors.contains(where: { $0.id == major.id })
+                return notSelected && major.name.localizedCaseInsensitiveContains(trimmed)
+            }
+        }
+        reloadMajorDropdown()
+    }
+
+    private func reloadMajorDropdown() {
+        majorDropdownTableView.reloadData()
+        let shouldShow = tipType == .major && majorTextField.isFirstResponder && !filteredMajors.isEmpty
+        majorDropdownTableView.isHidden = !shouldShow
+        majorDropdownHeightConstraint?.update(offset: shouldShow ? min(CGFloat(filteredMajors.count) * 40, 160) : 0)
+        view.layoutIfNeeded()
+    }
+
+    private func renderSelectedMajorChips() {
+        majorChipsStackView.arrangedSubviews.forEach {
+            majorChipsStackView.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+
+        for (index, major) in selectedMajors.enumerated() {
+            let button = UIButton(type: .system).then {
+                var configuration = UIButton.Configuration.plain()
+                configuration.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10)
+                $0.configuration = configuration
+                $0.setTitle("\(major.name) ×", for: .normal)
+                $0.setTitleColor(.black800, for: .normal)
+                $0.titleLabel?.font = .style(.body4)
+                $0.backgroundColor = .orange200
+                $0.layer.cornerRadius = 4
+                $0.tag = index
+            }
+            button.addTarget(self, action: #selector(didTapRemoveMajorChip(_:)), for: .touchUpInside)
+            majorChipsStackView.addArrangedSubview(button)
+        }
+
+        let hasSelectedMajors = !selectedMajors.isEmpty
+        majorChipsScrollView.isHidden = !hasSelectedMajors
+        majorChipsHeightConstraint?.update(offset: hasSelectedMajors ? 28 : 0)
+        view.layoutIfNeeded()
+    }
+
+    @objc private func didTapRemoveMajorChip(_ sender: UIButton) {
+        let index = sender.tag
+        guard index < selectedMajors.count else { return }
+        selectedMajors.remove(at: index)
+        filterMajors(with: majorTextField.text ?? "")
+    }
+
     private func updateShareButtonState() {
         let isTitleFilled   = !titleTextField.text.isEmpty
         let isContentFilled = !contentTextView.text.isEmpty
         let isCategoryValid = tipType.requiresCategorySelection ? selectedCategory != nil : true
-        let isEnabled = isTitleFilled && isContentFilled && isCategoryValid
+        let isMajorValid = tipType.requiresMajorSelection ? !selectedMajors.isEmpty : true
+        let isEnabled = isTitleFilled && isContentFilled && isCategoryValid && isMajorValid
 
         shareButton.isEnabled = isEnabled
     }
@@ -210,15 +409,16 @@ final class WriteViewController: UIViewController {
         let title = titleTextField.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = contentTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, !body.isEmpty else { return }
+        let uploadableImageURLs = selectedImageURLs.filter {
+            guard let url = URL(string: $0) else { return false }
+            let scheme = url.scheme?.lowercased()
+            return scheme == "http" || scheme == "https"
+        }
 
-        let request = CreateTipRequest(
-            title: title,
-            body: body,
-            category: tipType.apiCategory,
-            isAnonymous: isAnonymous,
-            placeID: nil,
-            imageURLs: []
-        )
+        if !selectedImages.isEmpty && uploadableImageURLs.isEmpty {
+            showImageUploadGuideAlert()
+            return
+        }
 
         shareButton.isEnabled = false
 
@@ -226,7 +426,26 @@ final class WriteViewController: UIViewController {
             guard let self else { return }
 
             do {
-                _ = try await tipService.createTip(request: request)
+                if tipType == .major {
+                    let request = CreateMajorPostRequest(
+                        title: title,
+                        body: body,
+                        majorIDs: selectedMajors.map(\.id),
+                        isAnonymous: isAnonymous,
+                        imageURLs: uploadableImageURLs
+                    )
+                    _ = try await tipService.createMajorPost(request: request)
+                } else {
+                    let request = CreateTipRequest(
+                        title: title,
+                        body: body,
+                        category: tipType.apiCategory,
+                        isAnonymous: isAnonymous,
+                        placeID: nil,
+                        imageURLs: uploadableImageURLs
+                    )
+                    _ = try await tipService.createTip(request: request)
+                }
                 await MainActor.run {
                     self.showCreatedAlert()
                 }
@@ -260,6 +479,26 @@ final class WriteViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "확인", style: .default))
         present(alert, animated: true)
     }
+
+    private func showImageUploadGuideAlert() {
+        let alert = UIAlertController(
+            title: "이미지 전송 불가",
+            message: "현재 선택한 이미지는 로컬 파일이라 image_urls로 전송할 수 없어요.\n서버 이미지 업로드 API가 연결되면 함께 전송할 수 있습니다.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
+    }
+
+    private func showMajorLoadFailedAlert(_ error: Error) {
+        let alert = UIAlertController(
+            title: "전공 목록 불러오기 실패",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
+    }
 }
 
 extension WriteViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
@@ -268,11 +507,13 @@ extension WriteViewController: UIImagePickerControllerDelegate, UINavigationCont
                                didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
         picker.dismiss(animated: true)
         guard let image = info[.originalImage] as? UIImage else { return }
-        addImageThumbnail(image)
+        let imageURL = (info[.imageURL] as? URL)?.absoluteString
+        addImageThumbnail(image, imageURL: imageURL)
     }
 
-    private func addImageThumbnail(_ image: UIImage) {
+    private func addImageThumbnail(_ image: UIImage, imageURL: String?) {
         selectedImages.append(image)
+        selectedImageURLs.append(imageURL ?? "")
 
         let container = UIView()
         let imageView = UIImageView(image: image).then {
@@ -306,9 +547,54 @@ extension WriteViewController: UIImagePickerControllerDelegate, UINavigationCont
         let index = sender.tag
         guard index < selectedImages.count else { return }
         selectedImages.remove(at: index)
+        if index < selectedImageURLs.count {
+            selectedImageURLs.remove(at: index)
+        }
         let viewToRemove = imageStackView.arrangedSubviews[index]
         imageStackView.removeArrangedSubview(viewToRemove)
         viewToRemove.removeFromSuperview()
+    }
+}
+
+extension WriteViewController: UITableViewDataSource, UITableViewDelegate, UITextFieldDelegate {
+
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        guard textField === majorTextField else { return }
+        filterMajors(with: majorTextField.text ?? "")
+    }
+
+    func textFieldDidEndEditing(_ textField: UITextField) {
+        guard textField === majorTextField else { return }
+        majorDropdownTableView.isHidden = true
+        majorDropdownHeightConstraint?.update(offset: 0)
+        view.layoutIfNeeded()
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        textField.resignFirstResponder()
+        return true
+    }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        filteredMajors.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "MajorCell", for: indexPath)
+        var content = cell.defaultContentConfiguration()
+        content.text = filteredMajors[indexPath.row].name
+        content.textProperties.font = .style(.body3)
+        content.textProperties.color = .black700
+        cell.contentConfiguration = content
+        cell.selectionStyle = .none
+        return cell
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        let selected = filteredMajors[indexPath.row]
+        selectedMajors.append(.init(id: selected.id, name: selected.name))
+        majorTextField.text = ""
+        filterMajors(with: "")
     }
 }
 
@@ -338,6 +624,10 @@ extension WriteViewController: UICollectionViewDataSource, UICollectionViewDeleg
 }
 
 private extension TipType {
+    var requiresMajorSelection: Bool {
+        self == .major
+    }
+
     var apiCategory: String {
         switch self {
         case .location:

@@ -6,6 +6,13 @@
 //
 import Foundation
 
+struct ShareComment {
+    let id: String
+    let author: String
+    let content: String
+    let isReply: Bool
+}
+
 struct SharePost {
     let id: String?
     let author: String?
@@ -20,6 +27,7 @@ struct SharePost {
     let isAnonymous: Bool?
     let isLiked: Bool?
     let imageURLs: [String]
+    let comments: [ShareComment]
 
     init(
         id: String? = nil,
@@ -34,7 +42,8 @@ struct SharePost {
         place: String? = nil,
         isAnonymous: Bool? = nil,
         isLiked: Bool? = nil,
-        imageURLs: [String] = []
+        imageURLs: [String] = [],
+        comments: [ShareComment] = []
     ) {
         self.id = id
         self.author = author
@@ -49,6 +58,7 @@ struct SharePost {
         self.isAnonymous = isAnonymous
         self.isLiked = isLiked
         self.imageURLs = imageURLs
+        self.comments = comments
     }
 
     init(category: String, title: String, content: String) {

@@ -31,6 +31,8 @@ public final class LatestPostCell: UICollectionViewCell {
 
     private let chip = PostCategoryBadge(title: "")
     private let reactionView = PostReactionView()
+    private var postID: String?
+    var onToggleLike: ((String, Bool, Int) -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -70,6 +72,7 @@ public final class LatestPostCell: UICollectionViewCell {
     }
 
     func configure(with post: SharePost) {
+        postID = post.id
         titleLabel.text = post.title
         contentLabel.text = post.content.isEmpty ? (post.author ?? "") : post.content
         chip.text = post.category
@@ -78,5 +81,9 @@ public final class LatestPostCell: UICollectionViewCell {
             commentCount: post.commentCount,
             isHearted: post.isLiked ?? false
         )
+        reactionView.onHeartToggle = { [weak self] isLiked, likeCount in
+            guard let postID = self?.postID else { return }
+            self?.onToggleLike?(postID, isLiked, likeCount)
+        }
     }
 }

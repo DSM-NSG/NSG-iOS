@@ -4,7 +4,9 @@ import Moya
 protocol TipServicing {
     func listTips(category: String?, page: Int?, search: String?) async throws -> [SharePost]
     func tipDetail(id: String) async throws -> SharePost
+    func majors() async throws -> [MajorCategory]
     func createTip(request: CreateTipRequest) async throws -> SharePost
+    func createMajorPost(request: CreateMajorPostRequest) async throws -> SharePost
     func toggleLike(postID: String) async throws -> TipLikeToggleResponse
 }
 
@@ -73,6 +75,26 @@ final class TipService: TipServicing {
         }
     }
 
+    func majors() async throws -> [MajorCategory] {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.majors) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoded = try JSONDecoder().decode([MajorCategory].self, from: filteredResponse.data)
+                        continuation.resume(returning: decoded)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     func createTip(request: CreateTipRequest) async throws -> SharePost {
         try await withCheckedThrowingContinuation { continuation in
             provider.request(.create(request)) { result in
@@ -91,6 +113,37 @@ final class TipService: TipServicing {
                                     title: request.title,
                                     content: request.body,
                                     category: Self.mapCategoryFromAPI(request.category)
+                                )
+                            )
+                        }
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func createMajorPost(request: CreateMajorPostRequest) async throws -> SharePost {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.createMajor(request)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoder = JSONDecoder()
+
+                        if let decoded = try? decoder.decode(TipDetailResponse.self, from: filteredResponse.data) {
+                            continuation.resume(returning: Self.mapDetailToSharePost(decoded))
+                        } else {
+                            continuation.resume(
+                                returning: SharePost(
+                                    title: request.title,
+                                    content: request.body,
+                                    category: "전공"
                                 )
                             )
                         }
@@ -130,24 +183,43 @@ final class TipService: TipServicing {
             id: item.id,
             author: item.author,
             title: item.title,
-            content: "작성자: \(item.author)",
+            content: item.body,
             category: mapCategoryFromAPI(item.category),
             likeCount: item.likeCount,
             commentCount: item.commentCount,
             hasImages: item.hasImages,
-            createdAt: item.createdAt
+            createdAt: item.createdAt,
+            isLiked: item.isLiked
         )
     }
 
     private static func mapDetailToSharePost(_ detail: TipDetailResponse) -> SharePost {
-        SharePost(
+        let flattenedComments: [ShareComment] = detail.comments.flatMap { comment in
+            let baseComment = ShareComment(
+                id: comment.id,
+                author: comment.author,
+                content: comment.content,
+                isReply: false
+            )
+            let replies = comment.replies.map {
+                ShareComment(
+                    id: $0.id,
+                    author: $0.author,
+                    content: $0.content,
+                    isReply: true
+                )
+            }
+            return [baseComment] + replies
+        }
+
+        return SharePost(
             id: detail.id,
             author: detail.author,
             title: detail.title,
             content: detail.body,
             category: mapCategoryFromAPI(detail.category),
             likeCount: detail.likeCount,
-            commentCount: 0,
+            commentCount: detail.commentCount ?? flattenedComments.count,
             hasImages: !detail.images.isEmpty,
             createdAt: detail.createdAt,
             place: detail.place,
@@ -155,7 +227,8 @@ final class TipService: TipServicing {
             isLiked: detail.isLiked,
             imageURLs: detail.images
                 .sorted { $0.orderIndex < $1.orderIndex }
-                .map(\.url)
+                .map(\.url),
+            comments: flattenedComments
         )
     }
 

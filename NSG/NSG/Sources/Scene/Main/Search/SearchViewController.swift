@@ -70,7 +70,12 @@ final class SearchViewController: UIViewController {
         addView()
         setLayout()
         configureUI()
-        fetchPosts(keyword: nil)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        let keyword = searchInputView.currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        fetchPosts(keyword: keyword)
     }
 
     override func viewDidLayoutSubviews() {

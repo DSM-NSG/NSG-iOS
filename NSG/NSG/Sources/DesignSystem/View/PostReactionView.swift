@@ -10,6 +10,12 @@ import Then
 
 public final class PostReactionView: UIStackView {
 
+    var onHeartToggle: ((Bool, Int) -> Void)? {
+        didSet {
+            heartReactionView.onToggle = onHeartToggle
+        }
+    }
+
     private let heartReactionView = ReactionCountView(
         mode: .toggle(onImage: "heart", offImage: "heartOff"),
         count: 15,
@@ -30,6 +36,7 @@ public final class PostReactionView: UIStackView {
 
         addArrangedSubview(heartReactionView)
         addArrangedSubview(commentReactionView)
+        heartReactionView.onToggle = onHeartToggle
     }
 
     func configure(heartCount: Int, commentCount: Int, isHearted: Bool) {
