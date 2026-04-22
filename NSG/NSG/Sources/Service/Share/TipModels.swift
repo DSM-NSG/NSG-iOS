@@ -5,6 +5,142 @@ struct MajorCategory: Decodable, Equatable {
     let name: String
 }
 
+struct PopularMajorTag: Decodable, Equatable {
+    let id: String
+    let name: String
+    let postCount: Int
+    let totalLikes: Int
+    let score: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case postCount = "post_count"
+        case totalLikes = "total_likes"
+        case score
+    }
+}
+
+struct MajorPostListResponseItem: Decodable {
+    let id: String
+    let author: String
+    let title: String
+    let body: String
+    let majors: [String]
+    let likeCount: Int
+    let isLiked: Bool
+    let commentCount: Int
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case author
+        case title
+        case body
+        case majors
+        case likeCount = "like_count"
+        case isLiked = "is_liked"
+        case commentCount = "comment_count"
+        case createdAt = "created_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        author = container.decodeFlexibleAuthor(forKey: .author)
+        title = (try? container.decode(String.self, forKey: .title)) ?? ""
+        body = (try? container.decode(String.self, forKey: .body)) ?? ""
+        likeCount = container.decodeFlexibleInt(forKey: .likeCount)
+        isLiked = container.decodeFlexibleBool(forKey: .isLiked)
+        commentCount = container.decodeFlexibleInt(forKey: .commentCount)
+        createdAt = (try? container.decode(String.self, forKey: .createdAt)) ?? ""
+
+        if let majorsArray = try? container.decode([String].self, forKey: .majors) {
+            majors = majorsArray
+        } else if let majorsString = try? container.decode(String.self, forKey: .majors) {
+            majors = majorsString
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        } else {
+            majors = []
+        }
+    }
+}
+
+struct MajorDetailResponse: Decodable {
+    struct Image: Decodable {
+        let url: String
+        let orderIndex: Int
+
+        enum CodingKeys: String, CodingKey {
+            case url
+            case orderIndex = "order_index"
+        }
+    }
+
+    let id: String
+    let author: String
+    let title: String
+    let body: String
+    let majors: [String]
+    let isAnonymous: Bool
+    let likeCount: Int
+    let isLiked: Bool
+    let images: [Image]
+    let commentCount: Int
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case author
+        case title
+        case body
+        case majors
+        case isAnonymous = "is_anonymous"
+        case likeCount = "like_count"
+        case isLiked = "is_liked"
+        case images
+        case comments
+        case createdAt = "created_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        author = container.decodeFlexibleAuthor(forKey: .author)
+        title = (try? container.decode(String.self, forKey: .title)) ?? ""
+        body = (try? container.decode(String.self, forKey: .body)) ?? ""
+        isAnonymous = container.decodeFlexibleBool(forKey: .isAnonymous)
+        likeCount = container.decodeFlexibleInt(forKey: .likeCount)
+        isLiked = container.decodeFlexibleBool(forKey: .isLiked)
+        images = (try? container.decode([Image].self, forKey: .images)) ?? []
+        createdAt = (try? container.decode(String.self, forKey: .createdAt)) ?? ""
+
+        if let majorsArray = try? container.decode([String].self, forKey: .majors) {
+            majors = majorsArray
+        } else if let majorsString = try? container.decode(String.self, forKey: .majors) {
+            majors = majorsString
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        } else {
+            majors = []
+        }
+
+        if let commentsCount = try? container.decode(Int.self, forKey: .comments) {
+            commentCount = commentsCount
+        } else if let commentsString = try? container.decode(String.self, forKey: .comments),
+                  let commentsCount = Int(commentsString) {
+            commentCount = commentsCount
+        } else if let commentsArray = try? container.decode([TipDetailResponse.Comment].self, forKey: .comments) {
+            commentCount = commentsArray.count
+        } else {
+            commentCount = 0
+        }
+    }
+}
+
 struct UploadImageResponse: Decodable {
     let url: String
 }

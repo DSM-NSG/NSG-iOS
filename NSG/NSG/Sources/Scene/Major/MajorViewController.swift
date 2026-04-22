@@ -15,27 +15,15 @@ final class MajorViewController: UIViewController {
         case searchResult
     }
 
-    private let popularPosts = [
-        SharePost(category: "기숙사", title: "Swift", content: "Swift Swift Swift Swift Swift Swift Swift Swift Swift Swift..."),
-        SharePost(category: "기숙사", title: "Swift", content: "Swift Swift Swift Swift Swift Swift Swift Swift Swift Swift..."),
-        SharePost(category: "기숙사", title: "Swift", content: "Swift Swift Swift Swift Swift Swift Swift Swift Swift Swift..."),
-        SharePost(category: "기숙사", title: "Swift", content: "Swift Swift Swift Swift Swift Swift Swift Swift Swift Swift..."),
-        SharePost(category: "기숙사", title: "Swift", content: "Swift Swift Swift Swift Swift Swift Swift Swift Swift Swift...")
-    ]
-
-    private let latestPosts = [
-        SharePost(category: "기숙사", title: "화장실 변기가 막혔다고요??? 당장 들어오세요", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다니..."),
-        SharePost(category: "기숙사", title: "화장실 변기가 막혔다고요??? 당장 들어오세요", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다니..."),
-        SharePost(category: "기숙사", title: "화장실 변기가 막혔다고요??? 당장 들어오세요", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다니..."),
-        SharePost(category: "기숙사", title: "화장실 변기가 막혔다고요??? 당장 들어오세요", content: "화장실 변기가 너무 자주 막히시죠?? 그래서 제가 오늘 끓여왔습니다니..."),
-        SharePost(category: "기숙사", title: "Swift", content: "Swift Swift Swift Swift Swift Swift Swift Swift Swift Swift..."),
-        SharePost(category: "기숙사", title: "Swift", content: "Swift Swift Swift Swift Swift Swift Swift Swift Swift Swift...")
-    ]
-
-    private let trendingTopics = [
+    private let fallbackTrendingTopics = [
         "FE", "Flutter", "iOS", "Design", "BE",
         "GO", "HOME", "tired", "why", "bomb"
     ]
+    private var trendingTopics: [String] = []
+    private var allMajorPosts: [SharePost] = []
+    private var popularPosts: [SharePost] = []
+    private var latestPosts: [SharePost] = []
+    private let tipService: TipServicing
 
     private var mode: Mode = .home
     private var filteredPopularPosts: [SharePost] = []
@@ -165,13 +153,28 @@ final class MajorViewController: UIViewController {
     private var latestTopFromPopularConstraint: Constraint?
     private var latestCollectionHeightConstraint: Constraint?
 
+    init(tipService: TipServicing) {
+        self.tipService = tipService
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    convenience init() {
+        self.init(tipService: TipService.shared)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        trendingTopics = fallbackTrendingTopics
         addView()
         setLayout()
         configureUI()
         bindContent()
+        fetchPopularMajorTags()
     }
 
     override func viewDidLayoutSubviews() {
@@ -339,6 +342,7 @@ final class MajorViewController: UIViewController {
         filteredPopularPosts = popularPosts
         filteredLatestPosts = latestPosts
         apply(mode: .home)
+        fetchMajorPosts()
     }
 
     private func bindTrendTopics() {
@@ -354,6 +358,72 @@ final class MajorViewController: UIViewController {
         rightItems.enumerated().forEach { index, title in
             trendRightStack.addArrangedSubview(makeTrendLabel(rank: index + 6, title: title))
         }
+    }
+
+    private func fetchPopularMajorTags() {
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let majors = try await tipService.popularMajors()
+                let majorNames = majors.map(\.name)
+                guard !majorNames.isEmpty else { return }
+
+                trendingTopics = Array(majorNames.prefix(10))
+                bindTrendTopics()
+            } catch {
+                // 실패 시에는 기본 트렌드 토픽을 유지한다.
+            }
+        }
+    }
+
+    private func fetchMajorPosts() {
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let posts = try await tipService.listMajorPosts(majorID: nil, page: 1, search: nil)
+                allMajorPosts = posts
+                popularPosts = Array(
+                    posts
+                        .sorted { $0.likeCount > $1.likeCount }
+                        .prefix(10)
+                )
+                latestPosts = posts.sorted {
+                    self.compareCreatedAt($0.createdAt, isNewerThan: $1.createdAt)
+                }
+
+                if mode == .home {
+                    apply(mode: .home)
+                }
+            } catch {
+                allMajorPosts = []
+                popularPosts = []
+                latestPosts = []
+                apply(mode: .home)
+            }
+        }
+    }
+
+    private func compareCreatedAt(_ lhs: String?, isNewerThan rhs: String?) -> Bool {
+        let lhsDate = date(from: lhs)
+        let rhsDate = date(from: rhs)
+
+        switch (lhsDate, rhsDate) {
+        case let (left?, right?):
+            return left > right
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        case (.none, .none):
+            return false
+        }
+    }
+
+    private func date(from value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        return ISO8601DateFormatter().date(from: value)
     }
 
     private func makeTrendLabel(rank: Int, title: String) -> UILabel {
@@ -405,7 +475,7 @@ final class MajorViewController: UIViewController {
         guard !keyword.isEmpty else { return [] }
 
         var seenTitles = Set<String>()
-        let allPosts = popularPosts + latestPosts
+        let allPosts = allMajorPosts
 
         return allPosts.compactMap { post in
             guard post.title.localizedCaseInsensitiveContains(keyword) else { return nil }
@@ -424,14 +494,12 @@ final class MajorViewController: UIViewController {
             return
         }
 
-        filteredPopularPosts = popularPosts.filter { post in
+        let matchedPosts = allMajorPosts.filter { post in
             post.title.localizedCaseInsensitiveContains(trimmed)
             || post.content.localizedCaseInsensitiveContains(trimmed)
         }
-        filteredLatestPosts = latestPosts.filter { post in
-            post.title.localizedCaseInsensitiveContains(trimmed)
-            || post.content.localizedCaseInsensitiveContains(trimmed)
-        }
+        filteredPopularPosts = matchedPosts.sorted { $0.likeCount > $1.likeCount }
+        filteredLatestPosts = matchedPosts.sorted { self.compareCreatedAt($0.createdAt, isNewerThan: $1.createdAt) }
 
         apply(mode: .searchResult)
     }

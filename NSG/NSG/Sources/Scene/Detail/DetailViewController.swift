@@ -411,7 +411,8 @@ final class DetailViewController: UIViewController {
             isAnonymous: post.isAnonymous,
             isLiked: isLiked,
             imageURLs: post.imageURLs,
-            comments: post.comments
+            comments: post.comments,
+            isMajorPost: post.isMajorPost
         )
     }
 
@@ -422,7 +423,12 @@ final class DetailViewController: UIViewController {
             guard let self else { return }
 
             do {
-                let detailedPost = try await tipService.tipDetail(id: postID)
+                let detailedPost: SharePost
+                if self.post.isMajorPost {
+                    detailedPost = try await tipService.majorDetail(id: postID)
+                } else {
+                    detailedPost = try await tipService.tipDetail(id: postID)
+                }
                 await MainActor.run {
                     self.post = detailedPost
                     self.configureContent()
@@ -558,7 +564,8 @@ final class DetailViewController: UIViewController {
             isAnonymous: post.isAnonymous,
             isLiked: post.isLiked,
             imageURLs: post.imageURLs,
-            comments: post.comments + [newShareComment]
+            comments: post.comments + [newShareComment],
+            isMajorPost: post.isMajorPost
         )
         renderComments()
     }
@@ -572,7 +579,11 @@ final class DetailViewController: UIViewController {
             guard let self else { return }
 
             do {
-                try await self.tipService.deleteTip(id: postID)
+                if self.post.isMajorPost {
+                    try await self.tipService.deleteMajor(id: postID)
+                } else {
+                    try await self.tipService.deleteTip(id: postID)
+                }
                 self.navigationController?.popViewController(animated: true)
             } catch {
                 self.isDeleteRequesting = false

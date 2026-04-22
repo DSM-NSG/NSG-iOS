@@ -4,14 +4,18 @@ import Moya
 protocol TipServicing {
     func listPlaces(category: String?) async throws -> [PlaceListResponseItem]
     func listTips(category: String?, page: Int?, search: String?) async throws -> [SharePost]
+    func listMajorPosts(majorID: String?, page: Int?, search: String?) async throws -> [SharePost]
     func tipDetail(id: String) async throws -> SharePost
+    func majorDetail(id: String) async throws -> SharePost
     func majors() async throws -> [MajorCategory]
+    func popularMajors() async throws -> [PopularMajorTag]
     func uploadImage(data: Data, fileName: String, mimeType: String) async throws -> String
     func createPlace(request: CreatePlaceRequest) async throws -> CreatePlaceResponse
     func createTip(request: CreateTipRequest) async throws -> SharePost
     func createMajorPost(request: CreateMajorPostRequest) async throws -> SharePost
     func toggleLike(postID: String) async throws -> TipLikeToggleResponse
     func deleteTip(id: String) async throws
+    func deleteMajor(id: String) async throws
 }
 
 @MainActor
@@ -78,6 +82,34 @@ final class TipService: TipServicing {
         }
     }
 
+    func listMajorPosts(majorID: String?, page: Int?, search: String?) async throws -> [SharePost] {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.majorPosts(majorID: majorID, page: page, search: search)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoder = JSONDecoder()
+                        let posts: [SharePost]
+
+                        if let paged = try? decoder.decode(TipListPageResponse.self, from: filteredResponse.data) {
+                            posts = paged.results.map(Self.mapListItemToSharePost)
+                        } else {
+                            let decoded = try decoder.decode([MajorPostListResponseItem].self, from: filteredResponse.data)
+                            posts = decoded.map(Self.mapMajorListItemToSharePost)
+                        }
+                        continuation.resume(returning: posts)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     func tipDetail(id: String) async throws -> SharePost {
         try await withCheckedThrowingContinuation { continuation in
             provider.request(.detail(id: id)) { result in
@@ -98,6 +130,26 @@ final class TipService: TipServicing {
         }
     }
 
+    func majorDetail(id: String) async throws -> SharePost {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.majorDetail(id: id)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoded = try JSONDecoder().decode(MajorDetailResponse.self, from: filteredResponse.data)
+                        continuation.resume(returning: Self.mapMajorDetailToSharePost(decoded))
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     func majors() async throws -> [MajorCategory] {
         try await withCheckedThrowingContinuation { continuation in
             provider.request(.majors) { result in
@@ -106,6 +158,26 @@ final class TipService: TipServicing {
                     do {
                         let filteredResponse = try response.filterSuccessfulStatusCodes()
                         let decoded = try JSONDecoder().decode([MajorCategory].self, from: filteredResponse.data)
+                        continuation.resume(returning: decoded)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func popularMajors() async throws -> [PopularMajorTag] {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.popularMajors) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoded = try JSONDecoder().decode([PopularMajorTag].self, from: filteredResponse.data)
                         continuation.resume(returning: decoded)
                     } catch {
                         continuation.resume(throwing: error)
@@ -198,14 +270,17 @@ final class TipService: TipServicing {
                         let filteredResponse = try response.filterSuccessfulStatusCodes()
                         let decoder = JSONDecoder()
 
-                        if let decoded = try? decoder.decode(TipDetailResponse.self, from: filteredResponse.data) {
+                        if let decoded = try? decoder.decode(MajorDetailResponse.self, from: filteredResponse.data) {
+                            continuation.resume(returning: Self.mapMajorDetailToSharePost(decoded))
+                        } else if let decoded = try? decoder.decode(TipDetailResponse.self, from: filteredResponse.data) {
                             continuation.resume(returning: Self.mapDetailToSharePost(decoded))
                         } else {
                             continuation.resume(
                                 returning: SharePost(
                                     title: request.title,
                                     content: request.body,
-                                    category: "전공"
+                                    category: "전공",
+                                    isMajorPost: true
                                 )
                             )
                         }
@@ -259,6 +334,25 @@ final class TipService: TipServicing {
         }
     }
 
+    func deleteMajor(id: String) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.deleteMajor(id: id)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        _ = try response.filterSuccessfulStatusCodes()
+                        continuation.resume(returning: ())
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     private static func mapListItemToSharePost(_ item: TipListResponseItem) -> SharePost {
         SharePost(
             id: item.id,
@@ -271,7 +365,8 @@ final class TipService: TipServicing {
             commentCount: item.commentCount,
             hasImages: item.hasImages,
             createdAt: item.createdAt,
-            isLiked: item.isLiked
+            isLiked: item.isLiked,
+            isMajorPost: false
         )
     }
 
@@ -311,7 +406,45 @@ final class TipService: TipServicing {
             imageURLs: detail.images
                 .sorted { $0.orderIndex < $1.orderIndex }
                 .map(\.url),
-            comments: flattenedComments
+            comments: flattenedComments,
+            isMajorPost: false
+        )
+    }
+
+    private static func mapMajorListItemToSharePost(_ item: MajorPostListResponseItem) -> SharePost {
+        SharePost(
+            id: item.id,
+            author: item.author,
+            title: item.title,
+            content: item.body,
+            category: item.majors.first ?? "전공",
+            likeCount: item.likeCount,
+            commentCount: item.commentCount,
+            hasImages: false,
+            createdAt: item.createdAt,
+            isLiked: item.isLiked,
+            isMajorPost: true
+        )
+    }
+
+    private static func mapMajorDetailToSharePost(_ detail: MajorDetailResponse) -> SharePost {
+        SharePost(
+            id: detail.id,
+            author: detail.author,
+            title: detail.title,
+            content: detail.body,
+            category: detail.majors.first ?? "전공",
+            likeCount: detail.likeCount,
+            commentCount: detail.commentCount,
+            hasImages: !detail.images.isEmpty,
+            createdAt: detail.createdAt,
+            isAnonymous: detail.isAnonymous,
+            isLiked: detail.isLiked,
+            imageURLs: detail.images
+                .sorted { $0.orderIndex < $1.orderIndex }
+                .map(\.url),
+            comments: [],
+            isMajorPost: true
         )
     }
 

@@ -34,33 +34,50 @@ final class LocationViewController: UIViewController {
             }
         }
 
+        init?(apiValue: String) {
+            switch apiValue.uppercased() {
+            case "CAFE":
+                self = .cafe
+            case "PC_ROOM":
+                self = .pcRoom
+            case "KARAOKE":
+                self = .karaoke
+            case "RESTAURANT":
+                self = .restaurant
+            case "ETC":
+                self = .etc
+            default:
+                return nil
+            }
+        }
+
         var activeColor: UIColor {
             switch self {
             case .cafe:
-                return UIColor(named: "cafe") ?? UIColor(hex: "#7D6B5E")
+                return UIColor(named: "cafe") ?? UIColor.cafe
             case .pcRoom:
-                return UIColor(named: "pc") ?? UIColor(hex: "#4A7FC1")
+                return UIColor(named: "pc") ?? UIColor.pc
             case .karaoke:
-                return UIColor(named: "sing") ?? UIColor(hex: "#9B3FA8")
+                return UIColor(named: "sing") ?? UIColor.sing
             case .restaurant:
-                return UIColor(named: "eat") ?? .orange500
+                return UIColor(named: "eat") ?? .orange400
             case .etc:
-                return UIColor(named: "etc") ?? UIColor(hex: "#6B7280")
+                return UIColor(named: "etc") ?? UIColor.black500
             }
         }
 
         var inactiveColor: UIColor {
             switch self {
             case .cafe:
-                return UIColor(named: "cafeNon") ?? UIColor(hex: "#7D6B5E").withAlphaComponent(0.7)
+                return UIColor(named: "cafeNon") ?? UIColor.cafeNon
             case .pcRoom:
-                return UIColor(named: "pcNon") ?? UIColor(hex: "#4A7FC1").withAlphaComponent(0.7)
+                return UIColor(named: "pcNon") ?? UIColor.pcNon
             case .karaoke:
-                return UIColor(named: "singNon") ?? UIColor(hex: "#9B3FA8").withAlphaComponent(0.7)
+                return UIColor(named: "singNon") ?? UIColor.singNon
             case .restaurant:
-                return UIColor(named: "eatNon") ?? .orange300
+                return UIColor(named: "eatNon") ?? .eatNon
             case .etc:
-                return UIColor(named: "etcNon") ?? UIColor(hex: "#6B7280").withAlphaComponent(0.7)
+                return UIColor(named: "etcNon") ?? UIColor.etcNon
             }
         }
     }
@@ -79,8 +96,14 @@ final class LocationViewController: UIViewController {
         }
     }
 
+
     private let tipService: TipServicing
-    private var selectedCategory: PlaceCategory = .cafe
+    private let locationManager = CLLocationManager()
+    private var selectedCategory: PlaceCategory?
+    private var hasCenteredOnUserLocation = false
+    private var isAwaitingInitialLocation = false
+    private var initialLocationDeadline: Date?
+    private var isManualLocationRequest = false
     private var currentAnnotation: PlaceAnnotation?
     private var allPlaces: [PlaceListResponseItem] = []
     private var filteredPlaces: [PlaceListResponseItem] = []
@@ -95,6 +118,7 @@ final class LocationViewController: UIViewController {
     private let mapView = MKMapView().then {
         $0.showsCompass = false
         $0.showsScale = false
+        $0.showsUserLocation = true
         $0.pointOfInterestFilter = .includingAll
     }
 
@@ -140,6 +164,17 @@ final class LocationViewController: UIViewController {
 
     private let writeButton = UIButton(type: .system).then {
         $0.setImage(UIImage(named: "write"), for: .normal)
+        $0.backgroundColor = .white
+        $0.layer.cornerRadius = 10
+        $0.layer.shadowColor = UIColor.black.cgColor
+        $0.layer.shadowOpacity = 0.12
+        $0.layer.shadowRadius = 6
+        $0.layer.shadowOffset = CGSize(width: 0, height: 2)
+    }
+
+    private let myLocationButton = UIButton(type: .system).then {
+        $0.setImage(UIImage(systemName: "location.fill"), for: .normal)
+        $0.tintColor = .orange500
         $0.backgroundColor = .white
         $0.layer.cornerRadius = 10
         $0.layer.shadowColor = UIColor.black.cgColor
@@ -246,6 +281,7 @@ final class LocationViewController: UIViewController {
         view.addSubview(searchContainerView)
         view.addSubview(categoryStackView)
         view.addSubview(writeButton)
+        view.addSubview(myLocationButton)
         view.addSubview(routeButton)
         view.addSubview(bottomSheetView)
 
@@ -290,6 +326,12 @@ final class LocationViewController: UIViewController {
         writeButton.snp.makeConstraints {
             $0.trailing.equalToSuperview().inset(20)
             $0.bottom.equalTo(view.safeAreaLayoutGuide).inset(86)
+            $0.size.equalTo(44)
+        }
+
+        myLocationButton.snp.makeConstraints {
+            $0.trailing.equalToSuperview().inset(20)
+            $0.bottom.equalTo(view.safeAreaLayoutGuide).inset(28)
             $0.size.equalTo(44)
         }
 
@@ -343,9 +385,55 @@ final class LocationViewController: UIViewController {
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(didTapDimView))
         dimView.addGestureRecognizer(tapGesture)
         routeButton.addTarget(self, action: #selector(didTapRouteButton), for: .touchUpInside)
+        myLocationButton.addTarget(self, action: #selector(didTapMyLocationButton), for: .touchUpInside)
     }
 
     private func configureInitialMapRegion() {
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        applyFallbackMapRegionIfNeeded()
+
+        switch locationManager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            requestInitialLocation()
+        case .notDetermined:
+            locationManager.requestWhenInUseAuthorization()
+        case .denied, .restricted:
+            applyFallbackMapRegionIfNeeded()
+        @unknown default:
+            applyFallbackMapRegionIfNeeded()
+        }
+    }
+
+    private func requestInitialLocation() {
+        guard !hasCenteredOnUserLocation else { return }
+        isAwaitingInitialLocation = true
+        initialLocationDeadline = Date().addingTimeInterval(10)
+        locationManager.startUpdatingLocation()
+    }
+
+    private func completeInitialLocationRequest() {
+        isAwaitingInitialLocation = false
+        initialLocationDeadline = nil
+        locationManager.stopUpdatingLocation()
+    }
+
+    private func isCoordinateInKorea(_ coordinate: CLLocationCoordinate2D) -> Bool {
+        (33.0...39.8).contains(coordinate.latitude) && (124.0...132.5).contains(coordinate.longitude)
+    }
+
+    private func centerMapOnLocation(_ location: CLLocation, animated: Bool) {
+        let region = MKCoordinateRegion(
+            center: location.coordinate,
+            latitudinalMeters: 1500,
+            longitudinalMeters: 1500
+        )
+        mapView.setRegion(region, animated: animated)
+        hasCenteredOnUserLocation = true
+    }
+
+    private func applyFallbackMapRegionIfNeeded() {
+        guard !hasCenteredOnUserLocation else { return }
         let center = CLLocationCoordinate2D(latitude: 36.3918, longitude: 127.3632)
         let region = MKCoordinateRegion(center: center, latitudinalMeters: 3000, longitudinalMeters: 3000)
         mapView.setRegion(region, animated: false)
@@ -354,7 +442,8 @@ final class LocationViewController: UIViewController {
     @objc
     private func didTapCategoryButton(_ sender: UIButton) {
         guard sender.tag < PlaceCategory.allCases.count else { return }
-        selectedCategory = PlaceCategory.allCases[sender.tag]
+        let tappedCategory = PlaceCategory.allCases[sender.tag]
+        selectedCategory = selectedCategory == tappedCategory ? nil : tappedCategory
         updateCategoryButtonStyles()
         fetchPlaces()
     }
@@ -375,7 +464,7 @@ final class LocationViewController: UIViewController {
             guard let self else { return }
 
             do {
-                let places = try await tipService.listPlaces(category: selectedCategory.apiValue)
+                let places = try await tipService.listPlaces(category: selectedCategory?.apiValue)
                 allPlaces = places
                 applyPlaceSearchFilter()
             } catch {
@@ -400,8 +489,11 @@ final class LocationViewController: UIViewController {
     }
 
     private func refreshPlaceAnnotations() {
-        let annotations = filteredPlaces.map { PlaceAnnotation(place: $0, category: selectedCategory) }
-        mapView.removeAnnotations(mapView.annotations)
+        let annotations = filteredPlaces.map {
+            PlaceAnnotation(place: $0, category: PlaceCategory(apiValue: $0.category) ?? .etc)
+        }
+        let existingPlaceAnnotations = mapView.annotations.compactMap { $0 as? PlaceAnnotation }
+        mapView.removeAnnotations(existingPlaceAnnotations)
         mapView.addAnnotations(annotations)
 
         if let first = annotations.first, !(searchTextField.text?.isEmpty ?? true) {
@@ -489,6 +581,101 @@ final class LocationViewController: UIViewController {
         destination.name = annotation.title
         destination.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
     }
+
+    @objc
+    private func didTapMyLocationButton() {
+        switch locationManager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            mapView.setUserTrackingMode(.follow, animated: true)
+            if let current = mapView.userLocation.location {
+                centerMapOnLocation(current, animated: true)
+                return
+            }
+            isManualLocationRequest = true
+            locationManager.requestLocation()
+        case .notDetermined:
+            isManualLocationRequest = true
+            locationManager.requestWhenInUseAuthorization()
+        case .denied, .restricted:
+            let alert = UIAlertController(
+                title: "위치 권한 필요",
+                message: "내 위치로 이동하려면 위치 권한을 허용해주세요.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "확인", style: .default))
+            present(alert, animated: true)
+        @unknown default:
+            break
+        }
+    }
+}
+
+extension LocationViewController: CLLocationManagerDelegate {
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            if isManualLocationRequest {
+                manager.requestLocation()
+            }
+            requestInitialLocation()
+        case .denied, .restricted:
+            applyFallbackMapRegionIfNeeded()
+        case .notDetermined:
+            break
+        @unknown default:
+            applyFallbackMapRegionIfNeeded()
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        let now = Date()
+
+        let candidate = locations.reversed().first { location in
+            location.horizontalAccuracy > 0
+            && location.horizontalAccuracy <= 500
+            && abs(location.timestamp.timeIntervalSince(now)) <= 30
+        } ?? locations.last
+
+        if isManualLocationRequest, let latest = candidate {
+            mapView.setUserTrackingMode(.follow, animated: true)
+            centerMapOnLocation(latest, animated: true)
+            isManualLocationRequest = false
+            if isAwaitingInitialLocation {
+                completeInitialLocationRequest()
+            }
+            return
+        }
+
+        guard !hasCenteredOnUserLocation else { return }
+
+        if let latest = candidate, isCoordinateInKorea(latest.coordinate) {
+            centerMapOnLocation(latest, animated: false)
+            completeInitialLocationRequest()
+            return
+        }
+
+        if let deadline = initialLocationDeadline, now >= deadline {
+            applyFallbackMapRegionIfNeeded()
+            completeInitialLocationRequest()
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if isManualLocationRequest {
+            isManualLocationRequest = false
+            let alert = UIAlertController(
+                title: "위치를 찾을 수 없어요",
+                message: "잠시 후 다시 시도해주세요.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "확인", style: .default))
+            present(alert, animated: true)
+        }
+        if isAwaitingInitialLocation, let deadline = initialLocationDeadline, Date() >= deadline {
+            applyFallbackMapRegionIfNeeded()
+            completeInitialLocationRequest()
+        }
+    }
 }
 
 extension LocationViewController: UITextFieldDelegate {
@@ -518,7 +705,11 @@ extension LocationViewController: MKMapViewDelegate {
 
         markerView.canShowCallout = false
         markerView.glyphImage = UIImage(systemName: "mappin")
-        markerView.markerTintColor = .orange500
+        if let placeAnnotation = annotation as? PlaceAnnotation {
+            markerView.markerTintColor = placeAnnotation.category.activeColor
+        } else {
+            markerView.markerTintColor = .orange500
+        }
         return markerView
     }
 

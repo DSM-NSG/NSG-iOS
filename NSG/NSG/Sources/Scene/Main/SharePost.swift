@@ -25,6 +25,7 @@ struct SharePost {
     let hasImages: Bool
     let createdAt: String?
     let place: String?
+    let isMajorPost: Bool
     let isAnonymous: Bool?
     let isLiked: Bool?
     let imageURLs: [String]
@@ -45,7 +46,8 @@ struct SharePost {
         isAnonymous: Bool? = nil,
         isLiked: Bool? = nil,
         imageURLs: [String] = [],
-        comments: [ShareComment] = []
+        comments: [ShareComment] = [],
+        isMajorPost: Bool = false
     ) {
         self.id = id
         self.author = author
@@ -58,6 +60,7 @@ struct SharePost {
         self.hasImages = hasImages
         self.createdAt = createdAt
         self.place = place
+        self.isMajorPost = isMajorPost
         self.isAnonymous = isAnonymous
         self.isLiked = isLiked
         self.imageURLs = imageURLs
