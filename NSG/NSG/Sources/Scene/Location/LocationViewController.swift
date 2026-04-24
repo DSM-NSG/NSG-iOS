@@ -12,7 +12,7 @@ import Then
 @MainActor
 final class LocationViewController: UIViewController {
 
-    private enum PlaceCategory: String, CaseIterable {
+    enum PlaceCategory: String, CaseIterable {
         case cafe = "카페"
         case pcRoom = "PC방"
         case karaoke = "노래방"
@@ -82,7 +82,7 @@ final class LocationViewController: UIViewController {
         }
     }
 
-    private final class PlaceAnnotation: MKPointAnnotation {
+    final class PlaceAnnotation: MKPointAnnotation {
         let category: PlaceCategory
         let place: PlaceListResponseItem
 
@@ -96,7 +96,7 @@ final class LocationViewController: UIViewController {
         }
     }
 
-    private struct SearchAutoCompleteItem {
+    struct SearchAutoCompleteItem {
         let title: String
         let subtitle: String
         let completion: MKLocalSearchCompletion
@@ -107,47 +107,49 @@ final class LocationViewController: UIViewController {
     }
 
 
-    private let tipService: TipServicing
-    private let locationManager = CLLocationManager()
-    private var selectedCategory: PlaceCategory?
-    private var hasCenteredOnUserLocation = false
-    private var isAwaitingInitialLocation = false
-    private var initialLocationDeadline: Date?
-    private var isManualLocationRequest = false
-    private var currentAnnotation: PlaceAnnotation?
-    private var searchPreviewAnnotation: MKPointAnnotation?
-    private var allPlaces: [PlaceListResponseItem] = []
-    private var filteredPlaces: [PlaceListResponseItem] = []
-    private var selectedPlacePosts: [SharePost] = []
-    private let searchCompleter = MKLocalSearchCompleter()
-    private var searchAutoCompleteResults: [SearchAutoCompleteItem] = []
-    private var placeListTask: Task<Void, Never>?
-    private var placePostTask: Task<Void, Never>?
+    let tipService: TipServicing
+    let locationManager = CLLocationManager()
+    var selectedCategory: PlaceCategory?
+    var hasCenteredOnUserLocation = false
+    var isAwaitingInitialLocation = false
+    var initialLocationDeadline: Date?
+    var isManualLocationRequest = false
+    var currentAnnotation: PlaceAnnotation?
+    var searchPreviewAnnotation: MKPointAnnotation?
+    var allPlaces: [PlaceListResponseItem] = []
+    var filteredPlaces: [PlaceListResponseItem] = []
+    var selectedPlacePosts: [SharePost] = []
+    let searchCompleter = MKLocalSearchCompleter()
+    var searchAutoCompleteResults: [SearchAutoCompleteItem] = []
+    var placeListTask: Task<Void, Never>?
+    var placePostTask: Task<Void, Never>?
+    var placeAddressTask: Task<Void, Never>?
+    var placeAddressCache: [String: String] = [:]
 
-    private var bottomSheetHeightConstraint: Constraint?
-    private var bottomSheetBottomConstraint: Constraint?
-    private var routeButtonBottomConstraint: Constraint?
-    private var searchAutoCompleteHeightConstraint: Constraint?
+    var bottomSheetHeightConstraint: Constraint?
+    var bottomSheetBottomConstraint: Constraint?
+    var routeButtonBottomConstraint: Constraint?
+    var searchAutoCompleteHeightConstraint: Constraint?
 
-    private let mapView = MKMapView().then {
+    let mapView = MKMapView().then {
         $0.showsCompass = false
         $0.showsScale = false
         $0.showsUserLocation = true
         $0.pointOfInterestFilter = .includingAll
     }
 
-    private let dimView = UIView().then {
+    let dimView = UIView().then {
         $0.backgroundColor = UIColor.black.withAlphaComponent(0.15)
         $0.alpha = 0
         $0.isHidden = true
     }
 
-    private let searchContainerView = UIView().then {
+    let searchContainerView = UIView().then {
         $0.backgroundColor = .white
         $0.layer.cornerRadius = 10
     }
 
-    private let searchTextField = UITextField().then {
+    let searchTextField = UITextField().then {
         $0.font = .style(.body3)
         $0.textColor = .black800
         $0.tintColor = .orange500
@@ -159,13 +161,13 @@ final class LocationViewController: UIViewController {
         )
     }
 
-    private let searchAutoCompleteContainerView = UIView().then {
+    let searchAutoCompleteContainerView = UIView().then {
         $0.backgroundColor = .black50
         $0.layer.cornerRadius = 8
         $0.isHidden = true
     }
 
-    private let searchAutoCompleteTableView = UITableView(frame: .zero, style: .plain).then {
+    let searchAutoCompleteTableView = UITableView(frame: .zero, style: .plain).then {
         $0.backgroundColor = .clear
         $0.separatorStyle = .none
         $0.rowHeight = 36
@@ -173,14 +175,14 @@ final class LocationViewController: UIViewController {
         $0.isScrollEnabled = true
     }
 
-    private let categoryStackView = UIStackView().then {
+    let categoryStackView = UIStackView().then {
         $0.axis = .horizontal
         $0.spacing = 8
         $0.alignment = .fill
         $0.distribution = .fillProportionally
     }
 
-    private lazy var categoryButtons: [UIButton] = PlaceCategory.allCases.map { category in
+    lazy var categoryButtons: [UIButton] = PlaceCategory.allCases.map { category in
         UIButton(type: .system).then {
             $0.tag = PlaceCategory.allCases.firstIndex(of: category) ?? 0
             $0.layer.cornerRadius = 4
@@ -190,7 +192,7 @@ final class LocationViewController: UIViewController {
         }
     }
 
-    private let writeButton = UIButton(type: .system).then {
+    let writeButton = UIButton(type: .system).then {
         $0.setImage(UIImage(named: "write"), for: .normal)
         $0.backgroundColor = .white
         $0.layer.cornerRadius = 10
@@ -200,7 +202,7 @@ final class LocationViewController: UIViewController {
         $0.layer.shadowOffset = CGSize(width: 0, height: 2)
     }
 
-    private let myLocationButton = UIButton(type: .system).then {
+    let myLocationButton = UIButton(type: .system).then {
         $0.setImage(UIImage(systemName: "location.fill"), for: .normal)
         $0.tintColor = .orange500
         $0.backgroundColor = .white
@@ -211,7 +213,7 @@ final class LocationViewController: UIViewController {
         $0.layer.shadowOffset = CGSize(width: 0, height: 2)
     }
 
-    private let routeButton = UIButton(type: .system).then {
+    let routeButton = UIButton(type: .system).then {
         $0.setTitle("길찾기", for: .normal)
         $0.setTitleColor(.white, for: .normal)
         $0.titleLabel?.font = .style(.header4)
@@ -220,37 +222,37 @@ final class LocationViewController: UIViewController {
         $0.isHidden = true
     }
 
-    private let bottomSheetView = UIView().then {
+    let bottomSheetView = UIView().then {
         $0.backgroundColor = .white
         $0.layer.cornerRadius = 20
         $0.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         $0.clipsToBounds = true
     }
 
-    private let sheetHandle = UIView().then {
+    let sheetHandle = UIView().then {
         $0.backgroundColor = .black200
         $0.layer.cornerRadius = 2
     }
 
-    private let placeNameLabel = UILabel().then {
+    let placeNameLabel = UILabel().then {
         $0.font = .style(.header2)
         $0.textColor = .black800
         $0.numberOfLines = 1
     }
 
-    private let placeAddressLabel = UILabel().then {
+    let placeAddressLabel = UILabel().then {
         $0.font = .style(.body3)
         $0.textColor = .black500
         $0.numberOfLines = 2
     }
 
-    private let postTitleLabel = UILabel().then {
+    let postTitleLabel = UILabel().then {
         $0.text = "위 장소가 포함된 글"
         $0.font = .style(.header3)
         $0.textColor = .black800
     }
 
-    private let emptyPostsLabel = UILabel().then {
+    let emptyPostsLabel = UILabel().then {
         $0.text = "해당 장소 관련 게시글이 아직 없어요."
         $0.font = .style(.body3)
         $0.textColor = .black500
@@ -258,7 +260,7 @@ final class LocationViewController: UIViewController {
         $0.isHidden = true
     }
 
-    private let postsCollectionView = UICollectionView(
+    let postsCollectionView = UICollectionView(
         frame: .zero,
         collectionViewLayout: {
             let layout = UICollectionViewFlowLayout()
@@ -302,7 +304,7 @@ final class LocationViewController: UIViewController {
         view.bringSubviewToFront(searchAutoCompleteContainerView)
     }
 
-    private func setupUI() {
+    func setupUI() {
         view.backgroundColor = .background
         mapView.delegate = self
         searchTextField.delegate = self
@@ -341,7 +343,7 @@ final class LocationViewController: UIViewController {
         ].forEach { bottomSheetView.addSubview($0) }
     }
 
-    private func setupLayout() {
+    func setupLayout() {
         mapView.snp.makeConstraints {
             $0.edges.equalToSuperview()
         }
@@ -434,14 +436,14 @@ final class LocationViewController: UIViewController {
         }
     }
 
-    private func bindActions() {
+    func bindActions() {
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(didTapDimView))
         dimView.addGestureRecognizer(tapGesture)
         routeButton.addTarget(self, action: #selector(didTapRouteButton), for: .touchUpInside)
         myLocationButton.addTarget(self, action: #selector(didTapMyLocationButton), for: .touchUpInside)
     }
 
-    private func configureInitialMapRegion() {
+    func configureInitialMapRegion() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         applyFallbackMapRegionIfNeeded()
@@ -458,24 +460,24 @@ final class LocationViewController: UIViewController {
         }
     }
 
-    private func requestInitialLocation() {
+    func requestInitialLocation() {
         guard !hasCenteredOnUserLocation else { return }
         isAwaitingInitialLocation = true
         initialLocationDeadline = Date().addingTimeInterval(10)
         locationManager.startUpdatingLocation()
     }
 
-    private func completeInitialLocationRequest() {
+    func completeInitialLocationRequest() {
         isAwaitingInitialLocation = false
         initialLocationDeadline = nil
         locationManager.stopUpdatingLocation()
     }
 
-    private func isCoordinateInKorea(_ coordinate: CLLocationCoordinate2D) -> Bool {
+    func isCoordinateInKorea(_ coordinate: CLLocationCoordinate2D) -> Bool {
         (33.0...39.8).contains(coordinate.latitude) && (124.0...132.5).contains(coordinate.longitude)
     }
 
-    private func centerMapOnLocation(_ location: CLLocation, animated: Bool) {
+    func centerMapOnLocation(_ location: CLLocation, animated: Bool) {
         let region = MKCoordinateRegion(
             center: location.coordinate,
             latitudinalMeters: 1500,
@@ -485,7 +487,7 @@ final class LocationViewController: UIViewController {
         hasCenteredOnUserLocation = true
     }
 
-    private func applyFallbackMapRegionIfNeeded() {
+    func applyFallbackMapRegionIfNeeded() {
         guard !hasCenteredOnUserLocation else { return }
         let center = CLLocationCoordinate2D(latitude: 36.3918, longitude: 127.3632)
         let region = MKCoordinateRegion(center: center, latitudinalMeters: 3000, longitudinalMeters: 3000)
@@ -493,7 +495,7 @@ final class LocationViewController: UIViewController {
     }
 
     @objc
-    private func didTapCategoryButton(_ sender: UIButton) {
+    func didTapCategoryButton(_ sender: UIButton) {
         guard sender.tag < PlaceCategory.allCases.count else { return }
         let tappedCategory = PlaceCategory.allCases[sender.tag]
         selectedCategory = selectedCategory == tappedCategory ? nil : tappedCategory
@@ -501,7 +503,7 @@ final class LocationViewController: UIViewController {
         fetchPlaces()
     }
 
-    private func updateCategoryButtonStyles() {
+    func updateCategoryButtonStyles() {
         for (index, button) in categoryButtons.enumerated() {
             let category = PlaceCategory.allCases[index]
             let isSelected = category == selectedCategory
@@ -511,7 +513,7 @@ final class LocationViewController: UIViewController {
         }
     }
 
-    private func fetchPlaces() {
+    func fetchPlaces() {
         placeListTask?.cancel()
         placeListTask = Task { [weak self] in
             guard let self else { return }
@@ -528,7 +530,7 @@ final class LocationViewController: UIViewController {
         }
     }
 
-    private func applyPlaceSearchFilter() {
+    func applyPlaceSearchFilter() {
         let keyword = searchTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if keyword.isEmpty {
             filteredPlaces = allPlaces
@@ -545,7 +547,7 @@ final class LocationViewController: UIViewController {
         refreshPlaceAnnotations()
     }
 
-    private func refreshPlaceAnnotations() {
+    func refreshPlaceAnnotations() {
         let annotations = filteredPlaces.map {
             PlaceAnnotation(place: $0, category: PlaceCategory(apiValue: $0.category) ?? .etc)
         }
@@ -558,7 +560,7 @@ final class LocationViewController: UIViewController {
         }
     }
 
-    private func selectPlace(annotation: PlaceAnnotation, moveToCenter: Bool) {
+    func selectPlace(annotation: PlaceAnnotation, moveToCenter: Bool) {
         currentAnnotation = annotation
         if moveToCenter {
             let region = MKCoordinateRegion(center: annotation.coordinate, latitudinalMeters: 800, longitudinalMeters: 800)
@@ -569,9 +571,10 @@ final class LocationViewController: UIViewController {
         loadPosts(for: annotation)
     }
 
-    private func showBottomSheet(for annotation: PlaceAnnotation) {
+    func showBottomSheet(for annotation: PlaceAnnotation) {
         placeNameLabel.text = annotation.title ?? "이름 없음"
-        placeAddressLabel.text = annotation.subtitle ?? ""
+        placeAddressLabel.text = placeAddressCache[annotation.place.id] ?? "주소 불러오는 중..."
+        resolvePlaceAddress(for: annotation)
         routeButton.isHidden = false
         dimView.isHidden = false
 
@@ -584,13 +587,13 @@ final class LocationViewController: UIViewController {
     }
 
     @objc
-    private func didTapDimView() {
+    func didTapDimView() {
         hideBottomSheet()
         mapView.selectedAnnotations.forEach { mapView.deselectAnnotation($0, animated: true) }
     }
 
     @objc
-    private func didChangeSearchTextField() {
+    func didChangeSearchTextField() {
         let keyword = searchTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         applyPlaceSearchFilter()
 
@@ -604,7 +607,7 @@ final class LocationViewController: UIViewController {
         searchCompleter.queryFragment = keyword
     }
 
-    private func updateSearchAutoCompleteUI() {
+    func updateSearchAutoCompleteUI() {
         searchAutoCompleteTableView.reloadData()
         let shouldShow = searchTextField.isFirstResponder
             && !(searchTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
@@ -617,7 +620,7 @@ final class LocationViewController: UIViewController {
         view.layoutIfNeeded()
     }
 
-    private func searchMapItem(with completion: MKLocalSearchCompletion) {
+    func searchMapItem(with completion: MKLocalSearchCompletion) {
         Task { [weak self] in
             guard let self else { return }
 
@@ -662,7 +665,7 @@ final class LocationViewController: UIViewController {
         }
     }
 
-    private func hideBottomSheet() {
+    func hideBottomSheet() {
         routeButton.isHidden = true
         UIView.animate(withDuration: 0.24, animations: {
             self.bottomSheetBottomConstraint?.update(offset: 320)
@@ -674,21 +677,14 @@ final class LocationViewController: UIViewController {
         })
     }
 
-    private func loadPosts(for annotation: PlaceAnnotation) {
+    func loadPosts(for annotation: PlaceAnnotation) {
         placePostTask?.cancel()
         placePostTask = Task { [weak self] in
             guard let self else { return }
 
             do {
-                let allPlacePosts = try await tipService.listTips(category: "PLACE", page: 1, search: nil)
-                let keyword = annotation.title ?? ""
-                let filtered = allPlacePosts.filter {
-                    $0.title.localizedCaseInsensitiveContains(keyword)
-                    || $0.content.localizedCaseInsensitiveContains(keyword)
-                    || ($0.place?.localizedCaseInsensitiveContains(keyword) ?? false)
-                }
-
-                self.selectedPlacePosts = filtered.isEmpty ? Array(allPlacePosts.prefix(10)) : filtered
+                let posts = try await tipService.listPlacePosts(placeID: annotation.place.id, page: 1)
+                self.selectedPlacePosts = posts
                 self.emptyPostsLabel.isHidden = !self.selectedPlacePosts.isEmpty
                 self.postsCollectionView.reloadData()
             } catch {
@@ -699,8 +695,61 @@ final class LocationViewController: UIViewController {
         }
     }
 
+    func resolvePlaceAddress(for annotation: PlaceAnnotation) {
+        if let cached = placeAddressCache[annotation.place.id], !cached.isEmpty {
+            placeAddressLabel.text = cached
+            return
+        }
+
+        placeAddressTask?.cancel()
+        let coordinate = annotation.coordinate
+        let placeID = annotation.place.id
+
+        placeAddressTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let geocoder = CLGeocoder()
+                let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                let placemarks = try await geocoder.reverseGeocodeLocation(location)
+                guard let placemark = placemarks.first else { return }
+
+                let components = [
+                    placemark.country,
+                    placemark.administrativeArea,
+                    placemark.locality,
+                    placemark.subLocality,
+                    placemark.thoroughfare,
+                    placemark.subThoroughfare
+                ]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+
+                let formatted = components.isEmpty
+                    ? (placemark.name ?? annotation.place.description)
+                    : components.joined(separator: " ")
+
+                await MainActor.run {
+                    self.placeAddressCache[placeID] = formatted
+                    if self.currentAnnotation?.place.id == placeID {
+                        self.placeAddressLabel.text = formatted
+                        self.postsCollectionView.reloadData()
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    let fallback = annotation.place.description
+                    self.placeAddressCache[placeID] = fallback
+                    if self.currentAnnotation?.place.id == placeID {
+                        self.placeAddressLabel.text = fallback
+                        self.postsCollectionView.reloadData()
+                    }
+                }
+            }
+        }
+    }
+
     @objc
-    private func didTapRouteButton() {
+    func didTapRouteButton() {
         guard let annotation = currentAnnotation else { return }
         if let url = URL(string: annotation.place.naverMapURL), UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url)
@@ -713,7 +762,7 @@ final class LocationViewController: UIViewController {
     }
 
     @objc
-    private func didTapMyLocationButton() {
+    func didTapMyLocationButton() {
         switch locationManager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             mapView.setUserTrackingMode(.follow, animated: true)
@@ -737,194 +786,5 @@ final class LocationViewController: UIViewController {
         @unknown default:
             break
         }
-    }
-}
-
-extension LocationViewController: CLLocationManagerDelegate {
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        switch manager.authorizationStatus {
-        case .authorizedWhenInUse, .authorizedAlways:
-            if isManualLocationRequest {
-                manager.requestLocation()
-            }
-            requestInitialLocation()
-        case .denied, .restricted:
-            applyFallbackMapRegionIfNeeded()
-        case .notDetermined:
-            break
-        @unknown default:
-            applyFallbackMapRegionIfNeeded()
-        }
-    }
-
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        let now = Date()
-
-        let candidate = locations.reversed().first { location in
-            location.horizontalAccuracy > 0
-            && location.horizontalAccuracy <= 500
-            && abs(location.timestamp.timeIntervalSince(now)) <= 30
-        } ?? locations.last
-
-        if isManualLocationRequest, let latest = candidate {
-            mapView.setUserTrackingMode(.follow, animated: true)
-            centerMapOnLocation(latest, animated: true)
-            isManualLocationRequest = false
-            if isAwaitingInitialLocation {
-                completeInitialLocationRequest()
-            }
-            return
-        }
-
-        guard !hasCenteredOnUserLocation else { return }
-
-        if let latest = candidate, isCoordinateInKorea(latest.coordinate) {
-            centerMapOnLocation(latest, animated: false)
-            completeInitialLocationRequest()
-            return
-        }
-
-        if let deadline = initialLocationDeadline, now >= deadline {
-            applyFallbackMapRegionIfNeeded()
-            completeInitialLocationRequest()
-        }
-    }
-
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        if isManualLocationRequest {
-            isManualLocationRequest = false
-            let alert = UIAlertController(
-                title: "위치를 찾을 수 없어요",
-                message: "잠시 후 다시 시도해주세요.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "확인", style: .default))
-            present(alert, animated: true)
-        }
-        if isAwaitingInitialLocation, let deadline = initialLocationDeadline, Date() >= deadline {
-            applyFallbackMapRegionIfNeeded()
-            completeInitialLocationRequest()
-        }
-    }
-}
-
-extension LocationViewController: UITextFieldDelegate {
-    func textFieldDidBeginEditing(_ textField: UITextField) {
-        didChangeSearchTextField()
-    }
-
-    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        textField.resignFirstResponder()
-        applyPlaceSearchFilter()
-        searchAutoCompleteContainerView.isHidden = true
-        searchAutoCompleteHeightConstraint?.update(offset: 0)
-        return true
-    }
-
-    func textFieldDidEndEditing(_ textField: UITextField) {
-        applyPlaceSearchFilter()
-        searchAutoCompleteContainerView.isHidden = true
-        searchAutoCompleteHeightConstraint?.update(offset: 0)
-    }
-}
-
-extension LocationViewController: UITableViewDataSource, UITableViewDelegate {
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        searchAutoCompleteResults.count
-    }
-
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCell(
-            withIdentifier: AutoCompleteCell.identifier,
-            for: indexPath
-        ) as? AutoCompleteCell else {
-            return UITableViewCell()
-        }
-
-        let item = searchAutoCompleteResults[indexPath.row]
-        let keyword = searchTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        cell.configure(text: item.displayText, keyword: keyword)
-        return cell
-    }
-
-    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        guard indexPath.row < searchAutoCompleteResults.count else { return }
-        let selected = searchAutoCompleteResults[indexPath.row]
-        searchTextField.text = selected.displayText
-        applyPlaceSearchFilter()
-        searchAutoCompleteResults = []
-        updateSearchAutoCompleteUI()
-        searchTextField.resignFirstResponder()
-        searchMapItem(with: selected.completion)
-    }
-}
-
-extension LocationViewController: MKLocalSearchCompleterDelegate {
-    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        searchAutoCompleteResults = Array(completer.results.prefix(8)).map {
-            SearchAutoCompleteItem(title: $0.title, subtitle: $0.subtitle, completion: $0)
-        }
-        updateSearchAutoCompleteUI()
-    }
-
-    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: any Error) {
-        searchAutoCompleteResults = []
-        updateSearchAutoCompleteUI()
-    }
-}
-
-extension LocationViewController: MKMapViewDelegate {
-    func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-        guard annotation is PlaceAnnotation else { return nil }
-        let identifier = "PlaceMarker"
-        let markerView: MKMarkerAnnotationView
-
-        if let reused = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView {
-            markerView = reused
-            markerView.annotation = annotation
-        } else {
-            markerView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-        }
-
-        markerView.canShowCallout = false
-        markerView.glyphImage = UIImage(systemName: "mappin")
-        if let placeAnnotation = annotation as? PlaceAnnotation {
-            markerView.markerTintColor = placeAnnotation.category.activeColor
-        } else {
-            markerView.markerTintColor = .orange500
-        }
-        return markerView
-    }
-
-    func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
-        guard let annotation = view.annotation as? PlaceAnnotation else { return }
-        selectPlace(annotation: annotation, moveToCenter: true)
-    }
-
-    func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {
-        if mapView.selectedAnnotations.isEmpty {
-            hideBottomSheet()
-        }
-    }
-}
-
-extension LocationViewController: UICollectionViewDataSource, UICollectionViewDelegate {
-    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        selectedPlacePosts.count
-    }
-
-    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
-        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: LatestPostCell.identifier, for: indexPath) as! LatestPostCell
-        let post = selectedPlacePosts[indexPath.row]
-        cell.configure(with: post)
-        cell.onToggleLike = nil
-        return cell
-    }
-
-    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
-        guard indexPath.row < selectedPlacePosts.count else { return }
-        let post = selectedPlacePosts[indexPath.row]
-        let detailViewController = DetailViewController(post: post)
-        navigationController?.pushViewController(detailViewController, animated: true)
     }
 }

@@ -71,10 +71,14 @@ public final class LatestPostCell: UICollectionViewCell {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func configure(with post: SharePost) {
+    func configure(with post: SharePost, secondaryText: String? = nil) {
         postID = post.id
         titleLabel.text = post.title
-        contentLabel.text = post.content.isEmpty ? (post.author ?? "") : post.content
+        if let secondaryText, !secondaryText.isEmpty {
+            contentLabel.text = secondaryText
+        } else {
+            contentLabel.text = post.content.isEmpty ? (post.author ?? "") : post.content
+        }
         chip.text = post.category
         reactionView.configure(
             heartCount: post.likeCount,
