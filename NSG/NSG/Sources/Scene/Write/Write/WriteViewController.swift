@@ -21,6 +21,7 @@ final class WriteViewController: UIViewController {
         case invalidImageData
         case missingLocationPlace
         case invalidLocationCategory
+        case missingMajorCategory
 
         var errorDescription: String? {
             switch self {
@@ -30,6 +31,8 @@ final class WriteViewController: UIViewController {
                 return "장소를 검색해서 선택해주세요."
             case .invalidLocationCategory:
                 return "장소 카테고리를 선택해주세요."
+            case .missingMajorCategory:
+                return "전공 카테고리를 하나 이상 선택하거나 입력해주세요."
             }
         }
     }
@@ -42,18 +45,29 @@ final class WriteViewController: UIViewController {
         let naverMapURL: String
     }
 
+    private struct PlaceAutoCompleteItem {
+        let title: String
+        let subtitle: String
+        let completion: MKLocalSearchCompletion
+
+        var displayAddress: String {
+            subtitle.isEmpty ? title : "\(title) \(subtitle)"
+        }
+    }
+
     private let tipType: TipType
     private let tipService: TipServicing
     private var selectedImages: [UIImage] = []
     private var selectedImageURLs: [String] = []
-    private var placeSearchTask: Task<Void, Never>?
-    private var placeResults: [PlaceSearchItem] = []
+    private let placeSearchCompleter = MKLocalSearchCompleter()
+    private var placeResults: [PlaceAutoCompleteItem] = []
     private var isApplyingSelectedPlace = false
     private var selectedPlace: PlaceSearchItem? {
         didSet { updateShareButtonState() }
     }
     private var allMajors: [MajorCategory] = []
     private var filteredMajors: [MajorCategory] = []
+    private var isCreatingMajorCategory = false
     private var selectedMajors: [MajorChipItem] = [] {
         didSet {
             renderSelectedMajorChips()
@@ -62,14 +76,20 @@ final class WriteViewController: UIViewController {
     }
     private var shareButtonBottomConstraint: Constraint?
     private var majorDropdownHeightConstraint: Constraint?
-    private var majorChipsHeightConstraint: Constraint?
     private var placeDropdownHeightConstraint: Constraint?
+    private var isSelectingPlaceSuggestion = false
+    private var isSelectingMajorSuggestion = false
     private var selectedCategory: LocationCategory? {
         didSet { updateShareButtonState() }
     }
+    private let scrollView = UIScrollView().then {
+        $0.showsVerticalScrollIndicator = true
+        $0.keyboardDismissMode = .interactive
+    }
+    private let contentView = UIView()
 
     private let titleTextField = NSGSingleTextField(placeholder: "제목")
-    private let placeTextField = NSGSingleTextField(placeholder: "장소를 입력해주세요.")
+    private let placeTextField = NSGSingleTextField(placeholder: "주소를 입력해주세요. (도시/도로명/번지)")
     private let contentTextView = WriteTextView(placeholder: "내용", maxLength: 1000)
 
     private lazy var categoryCollectionView: UICollectionView = {
@@ -118,7 +138,6 @@ final class WriteViewController: UIViewController {
     private let majorChipsScrollView = UIScrollView().then {
         $0.showsHorizontalScrollIndicator = false
         $0.alwaysBounceHorizontal = true
-        $0.isHidden = true
     }
 
     private let majorChipsStackView = UIStackView().then {
@@ -128,21 +147,26 @@ final class WriteViewController: UIViewController {
     }
 
     private let majorDropdownTableView = UITableView(frame: .zero, style: .plain).then {
-        $0.backgroundColor = .white
+        $0.backgroundColor = .black50
         $0.separatorStyle = .none
-        $0.layer.cornerRadius = 8
+        $0.layer.cornerRadius = 12
         $0.clipsToBounds = true
-        $0.rowHeight = 40
+        $0.rowHeight = 48
+        $0.isHidden = true
+    }
+
+    private let placeAutoCompleteContainerView = UIView().then {
+        $0.backgroundColor = .black50
+        $0.layer.cornerRadius = 8
         $0.isHidden = true
     }
 
     private let placeDropdownTableView = UITableView(frame: .zero, style: .plain).then {
-        $0.backgroundColor = .white
+        $0.backgroundColor = .clear
         $0.separatorStyle = .none
-        $0.layer.cornerRadius = 8
-        $0.clipsToBounds = true
-        $0.rowHeight = 44
-        $0.isHidden = true
+        $0.rowHeight = 36
+        $0.showsVerticalScrollIndicator = true
+        $0.isScrollEnabled = true
     }
     
     private let imageScrollView = UIScrollView().then {
@@ -196,9 +220,25 @@ final class WriteViewController: UIViewController {
             bindMajorCategoryUI()
             fetchMajors()
         }
+        if tipType == .location {
+            view.bringSubviewToFront(placeAutoCompleteContainerView)
+        }
+        if tipType == .major {
+            contentView.bringSubviewToFront(majorDropdownTableView)
+        }
         enableKeyboardDismissOnTap()
         if let shareButtonBottomConstraint {
             bindKeyboard(to: shareButtonBottomConstraint, defaultInset: 19)
+        }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if tipType == .location {
+            view.bringSubviewToFront(placeAutoCompleteContainerView)
+        }
+        if tipType == .major {
+            contentView.bringSubviewToFront(majorDropdownTableView)
         }
     }
 
@@ -220,24 +260,28 @@ final class WriteViewController: UIViewController {
 
     private func setupUI() {
         view.backgroundColor = .white
-        view.addSubview(titleTextField)
+        view.addSubview(scrollView)
+        scrollView.addSubview(contentView)
+        contentView.addSubview(titleTextField)
         if tipType == .location {
-            view.addSubview(placeTextField)
-            view.addSubview(placeDropdownTableView)
+            contentView.addSubview(placeTextField)
+            view.addSubview(placeAutoCompleteContainerView)
+            placeAutoCompleteContainerView.addSubview(placeDropdownTableView)
         }
         if tipType.requiresCategorySelection {
-            view.addSubview(categoryCollectionView)
+            contentView.addSubview(categoryCollectionView)
         }
-        view.addSubview(contentTextView)
+        contentView.addSubview(contentTextView)
         if tipType.requiresMajorSelection {
-            view.addSubview(majorCategoryLabel)
-            view.addSubview(majorTextFieldContainer)
-            view.addSubview(majorChipsScrollView)
-            view.addSubview(majorDropdownTableView)
-            majorTextFieldContainer.addSubview(majorTextField)
+            contentView.addSubview(majorCategoryLabel)
+            contentView.addSubview(majorTextFieldContainer)
+            contentView.addSubview(majorDropdownTableView)
+            majorTextFieldContainer.addSubview(majorChipsScrollView)
             majorChipsScrollView.addSubview(majorChipsStackView)
+            majorChipsStackView.addArrangedSubview(majorTextField)
+            majorDropdownTableView.layer.zPosition = 999
         }
-        view.addSubview(imageScrollView)
+        contentView.addSubview(imageScrollView)
         view.addSubview(shareButton)
 
         imageScrollView.addSubview(imageStackView)
@@ -245,8 +289,19 @@ final class WriteViewController: UIViewController {
     }
 
     private func setupLayout() {
+        scrollView.snp.makeConstraints {
+            $0.top.equalTo(view.safeAreaLayoutGuide)
+            $0.left.right.equalToSuperview()
+            $0.bottom.equalTo(shareButton.snp.top).offset(-12)
+        }
+
+        contentView.snp.makeConstraints {
+            $0.edges.equalToSuperview()
+            $0.width.equalTo(scrollView.frameLayoutGuide)
+        }
+
         titleTextField.snp.makeConstraints {
-            $0.top.equalTo(view.safeAreaLayoutGuide).offset(20)
+            $0.top.equalToSuperview().offset(20)
             $0.left.right.equalToSuperview().inset(23)
             $0.height.equalTo(52)
         }
@@ -259,12 +314,16 @@ final class WriteViewController: UIViewController {
                 $0.height.equalTo(52)
             }
 
-            placeDropdownTableView.snp.makeConstraints {
+            placeAutoCompleteContainerView.snp.makeConstraints {
                 $0.top.equalTo(placeTextField.snp.bottom).offset(6)
-                $0.left.right.equalToSuperview().inset(23)
+                $0.left.right.equalTo(placeTextField)
                 placeDropdownHeightConstraint = $0.height.equalTo(0).constraint
             }
-            contentTopAnchor = placeDropdownTableView.snp.bottom
+
+            placeDropdownTableView.snp.makeConstraints {
+                $0.edges.equalToSuperview().inset(10)
+            }
+            contentTopAnchor = placeTextField.snp.bottom
         } else {
             contentTopAnchor = titleTextField.snp.bottom
         }
@@ -292,17 +351,11 @@ final class WriteViewController: UIViewController {
             majorTextFieldContainer.snp.makeConstraints {
                 $0.top.equalTo(majorCategoryLabel.snp.bottom).offset(8)
                 $0.left.right.equalToSuperview().inset(23)
-                $0.height.equalTo(40)
-            }
-
-            majorTextField.snp.makeConstraints {
-                $0.edges.equalToSuperview().inset(UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12))
+                $0.height.equalTo(44)
             }
 
             majorChipsScrollView.snp.makeConstraints {
-                $0.top.equalTo(majorTextFieldContainer.snp.bottom).offset(8)
-                $0.left.right.equalToSuperview().inset(23)
-                majorChipsHeightConstraint = $0.height.equalTo(0).constraint
+                $0.edges.equalToSuperview().inset(UIEdgeInsets(top: 0, left: 10, bottom: 0, right: 10))
             }
 
             majorChipsStackView.snp.makeConstraints {
@@ -310,12 +363,17 @@ final class WriteViewController: UIViewController {
                 $0.height.equalToSuperview()
             }
 
+            majorTextField.snp.makeConstraints {
+                $0.width.greaterThanOrEqualTo(72)
+                $0.height.equalTo(28)
+            }
+
             majorDropdownTableView.snp.makeConstraints {
-                $0.top.equalTo(majorChipsScrollView.snp.bottom).offset(8)
+                $0.top.equalTo(majorTextFieldContainer.snp.bottom).offset(10)
                 $0.left.right.equalToSuperview().inset(23)
                 majorDropdownHeightConstraint = $0.height.equalTo(0).constraint
             }
-            anchorView = majorDropdownTableView
+            anchorView = majorTextFieldContainer
         } else {
             anchorView = contentTextView
         }
@@ -324,6 +382,7 @@ final class WriteViewController: UIViewController {
             $0.top.equalTo(anchorView.snp.bottom).offset(20)
             $0.left.right.equalToSuperview().inset(23)
             $0.height.equalTo(56)
+            $0.bottom.equalToSuperview().offset(-20)
         }
 
         imageStackView.snp.makeConstraints {
@@ -355,7 +414,9 @@ final class WriteViewController: UIViewController {
             placeTextField.textFieldRef.delegate = self
             placeDropdownTableView.dataSource = self
             placeDropdownTableView.delegate = self
-            placeDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "PlaceCell")
+            placeDropdownTableView.register(AutoCompleteCell.self, forCellReuseIdentifier: AutoCompleteCell.identifier)
+            placeSearchCompleter.delegate = self
+            placeSearchCompleter.resultTypes = .address
         }
     }
 
@@ -367,6 +428,7 @@ final class WriteViewController: UIViewController {
         majorDropdownTableView.dataSource = self
         majorDropdownTableView.delegate = self
         majorDropdownTableView.register(UITableViewCell.self, forCellReuseIdentifier: "MajorCell")
+        majorDropdownTableView.register(AutoCompleteCell.self, forCellReuseIdentifier: AutoCompleteCell.identifier)
     }
 
     private func fetchMajors() {
@@ -388,6 +450,17 @@ final class WriteViewController: UIViewController {
         filterMajors(with: majorTextField.text ?? "")
     }
 
+    private var majorCreateCandidateName: String? {
+        guard tipType == .major, !isCreatingMajorCategory else { return nil }
+        let trimmed = majorTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return nil }
+
+        let hasExact = allMajors.contains {
+            $0.name.compare(trimmed, options: .caseInsensitive) == .orderedSame
+        }
+        return hasExact ? nil : trimmed
+    }
+
     private func filterMajors(with query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -406,14 +479,55 @@ final class WriteViewController: UIViewController {
 
     private func reloadMajorDropdown() {
         majorDropdownTableView.reloadData()
-        let shouldShow = tipType == .major && majorTextField.isFirstResponder && !filteredMajors.isEmpty
+        let hasCreateCandidate = majorCreateCandidateName != nil
+        let shouldShow = tipType == .major
+            && majorTextField.isFirstResponder
+            && (!filteredMajors.isEmpty || hasCreateCandidate)
         majorDropdownTableView.isHidden = !shouldShow
-        majorDropdownHeightConstraint?.update(offset: shouldShow ? min(CGFloat(filteredMajors.count) * 40, 160) : 0)
+        let rowCount = filteredMajors.count + (hasCreateCandidate ? 1 : 0)
+        majorDropdownHeightConstraint?.update(offset: shouldShow ? min(CGFloat(rowCount) * 48, 210) : 0)
         view.layoutIfNeeded()
     }
 
+    private func createMajorCategoryIfNeeded(name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isCreatingMajorCategory else { return }
+
+        if let existing = allMajors.first(where: {
+            $0.name.compare(trimmed, options: .caseInsensitive) == .orderedSame
+        }) {
+            selectedMajors.append(.init(id: existing.id, name: existing.name))
+            majorTextField.text = ""
+            filterMajors(with: "")
+            return
+        }
+
+        isCreatingMajorCategory = true
+        reloadMajorDropdown()
+
+        Task { [weak self] in
+            guard let self else { return }
+            defer {
+                self.isCreatingMajorCategory = false
+                self.reloadMajorDropdown()
+            }
+
+            do {
+                let created = try await tipService.createMajorCategory(name: trimmed)
+                allMajors.append(created)
+                allMajors.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                selectedMajors.append(.init(id: created.id, name: created.name))
+                majorTextField.text = ""
+                filterMajors(with: "")
+            } catch {
+                showMajorCreateFailedAlert(error)
+            }
+        }
+    }
+
     private func renderSelectedMajorChips() {
-        majorChipsStackView.arrangedSubviews.forEach {
+        let existingChips = majorChipsStackView.arrangedSubviews.filter { $0 !== majorTextField }
+        existingChips.forEach {
             majorChipsStackView.removeArrangedSubview($0)
             $0.removeFromSuperview()
         }
@@ -424,20 +538,20 @@ final class WriteViewController: UIViewController {
                 configuration.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10)
                 $0.configuration = configuration
                 $0.setTitle("\(major.name) ×", for: .normal)
-                $0.setTitleColor(.black800, for: .normal)
+                $0.setTitleColor(.white, for: .normal)
                 $0.titleLabel?.font = .style(.body4)
-                $0.backgroundColor = .orange200
-                $0.layer.cornerRadius = 4
+                $0.backgroundColor = .orange500
+                $0.layer.cornerRadius = 6
                 $0.tag = index
             }
             button.addTarget(self, action: #selector(didTapRemoveMajorChip(_:)), for: .touchUpInside)
-            majorChipsStackView.addArrangedSubview(button)
+            let insertIndex = max(majorChipsStackView.arrangedSubviews.count - 1, 0)
+            majorChipsStackView.insertArrangedSubview(button, at: insertIndex)
         }
 
-        let hasSelectedMajors = !selectedMajors.isEmpty
-        majorChipsScrollView.isHidden = !hasSelectedMajors
-        majorChipsHeightConstraint?.update(offset: hasSelectedMajors ? 28 : 0)
         view.layoutIfNeeded()
+        let maxOffsetX = max(0, majorChipsScrollView.contentSize.width - majorChipsScrollView.bounds.width)
+        majorChipsScrollView.setContentOffset(CGPoint(x: maxOffsetX, y: 0), animated: false)
     }
 
     @objc private func didTapRemoveMajorChip(_ sender: UIButton) {
@@ -450,65 +564,96 @@ final class WriteViewController: UIViewController {
     private func searchPlacesForLocationField() {
         guard tipType == .location else { return }
         let query = placeTextField.text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        placeSearchTask?.cancel()
         guard !query.isEmpty else {
             placeResults = []
-            placeDropdownTableView.isHidden = true
+            placeSearchCompleter.queryFragment = ""
+            placeDropdownTableView.reloadData()
+            placeAutoCompleteContainerView.isHidden = true
             placeDropdownHeightConstraint?.update(offset: 0)
             view.layoutIfNeeded()
             return
         }
+        placeSearchCompleter.queryFragment = query
+    }
 
-        placeSearchTask = Task { [weak self] in
-            guard let self else { return }
+    private func updatePlaceAutoCompleteUI() {
+        placeDropdownTableView.reloadData()
+        let shouldShow = !placeResults.isEmpty && placeTextField.textFieldRef.isFirstResponder
+        placeAutoCompleteContainerView.isHidden = !shouldShow
+        placeDropdownHeightConstraint?.update(
+            offset: shouldShow ? min(CGFloat(placeResults.count) * 36 + 20, 150) : 0
+        )
+        view.layoutIfNeeded()
+    }
 
-            let request = MKLocalSearch.Request()
-            request.naturalLanguageQuery = query
+    private func resolvePlace(from completion: MKLocalSearchCompletion) async throws -> PlaceSearchItem {
+        let request = MKLocalSearch.Request(completion: completion)
+        request.resultTypes = .address
+        let response = try await MKLocalSearch(request: request).start()
 
-            do {
-                let response = try await MKLocalSearch(request: request).start()
-                let mapped = response.mapItems.compactMap { item -> PlaceSearchItem? in
-                    guard let location = item.placemark.location else { return nil }
-                    let name = item.name ?? query
-                    let address = item.placemark.title ?? ""
-                    let naverMapURL = "https://map.naver.com/v5/search/\(name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name)"
-                    return PlaceSearchItem(
-                        name: name,
-                        address: address,
-                        latitude: location.coordinate.latitude,
-                        longitude: location.coordinate.longitude,
-                        naverMapURL: naverMapURL
-                    )
-                }
-
-                self.placeResults = Array(mapped.prefix(8))
-                self.placeDropdownTableView.reloadData()
-                let shouldShow = !self.placeResults.isEmpty && self.placeTextField.textFieldRef.isFirstResponder
-                self.placeDropdownTableView.isHidden = !shouldShow
-                self.placeDropdownHeightConstraint?.update(offset: shouldShow ? min(CGFloat(self.placeResults.count) * 44, 220) : 0)
-                self.view.layoutIfNeeded()
-            } catch {
-                self.placeResults = []
-                self.placeDropdownTableView.reloadData()
-                self.placeDropdownTableView.isHidden = true
-                self.placeDropdownHeightConstraint?.update(offset: 0)
-                self.view.layoutIfNeeded()
-            }
+        guard let first = response.mapItems.first,
+              let location = first.placemark.location else {
+            throw WriteUploadError.missingLocationPlace
         }
+
+        let fallbackAddress = completion.subtitle.isEmpty
+            ? completion.title
+            : "\(completion.title) \(completion.subtitle)"
+        let address = first.placemark.title ?? fallbackAddress
+        let encodedQuery = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
+        let naverMapURL = "https://map.naver.com/v5/search/\(encodedQuery)"
+
+        return PlaceSearchItem(
+            name: address,
+            address: address,
+            latitude: location.coordinate.latitude,
+            longitude: location.coordinate.longitude,
+            naverMapURL: naverMapURL
+        )
     }
 
     private func updateShareButtonState() {
         let isTitleFilled   = !titleTextField.text.isEmpty
         let isContentFilled = !contentTextView.text.isEmpty
         let isCategoryValid = tipType.requiresCategorySelection ? selectedCategory != nil : true
-        let isMajorValid = tipType.requiresMajorSelection ? !selectedMajors.isEmpty : true
+        let pendingMajor = !(majorTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let isMajorValid = tipType.requiresMajorSelection ? (!selectedMajors.isEmpty || pendingMajor) : true
         let isLocationValid = tipType == .location
             ? !placeTextField.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             : true
         let isEnabled = isTitleFilled && isContentFilled && isCategoryValid && isMajorValid && isLocationValid
 
         shareButton.isEnabled = isEnabled
+    }
+
+    private func resolveMajorIDsForSubmission() async throws -> [String] {
+        var majors = selectedMajors
+        let pending = majorTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if !pending.isEmpty {
+            if let existing = allMajors.first(where: {
+                $0.name.compare(pending, options: .caseInsensitive) == .orderedSame
+            }) {
+                if !majors.contains(where: { $0.id == existing.id }) {
+                    majors.append(.init(id: existing.id, name: existing.name))
+                }
+            } else {
+                let created = try await tipService.createMajorCategory(name: pending)
+                allMajors.append(created)
+                allMajors.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                majors.append(.init(id: created.id, name: created.name))
+            }
+        }
+
+        let uniqueIDs = Array(Set(majors.map(\.id)))
+        guard !uniqueIDs.isEmpty else {
+            throw WriteUploadError.missingMajorCategory
+        }
+
+        selectedMajors = majors
+        majorTextField.text = ""
+        filterMajors(with: "")
+        return uniqueIDs
     }
 
     private func resolveLocationPlaceIfNeeded() async throws -> PlaceSearchItem {
@@ -523,6 +668,7 @@ final class WriteViewController: UIViewController {
 
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
+        request.resultTypes = .address
         let response = try await MKLocalSearch(request: request).start()
 
         guard let first = response.mapItems.first,
@@ -530,9 +676,10 @@ final class WriteViewController: UIViewController {
             throw WriteUploadError.missingLocationPlace
         }
 
-        let name = first.name ?? query
-        let address = first.placemark.title ?? ""
-        let naverMapURL = "https://map.naver.com/v5/search/\(name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name)"
+        let address = first.placemark.title ?? query
+        let name = address
+        let encodedQuery = address.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? address
+        let naverMapURL = "https://map.naver.com/v5/search/\(encodedQuery)"
         let resolved = PlaceSearchItem(
             name: name,
             address: address,
@@ -612,10 +759,11 @@ final class WriteViewController: UIViewController {
                     )
                     _ = try await tipService.createTip(request: request)
                 } else if tipType == .major {
+                    let majorIDs = try await resolveMajorIDsForSubmission()
                     let request = CreateMajorPostRequest(
                         title: title,
                         body: body,
-                        majorIDs: selectedMajors.map(\.id),
+                        majorIDs: majorIDs,
                         isAnonymous: isAnonymous,
                         imageURLs: uploadableImageURLs
                     )
@@ -710,6 +858,16 @@ final class WriteViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "확인", style: .default))
         present(alert, animated: true)
     }
+
+    private func showMajorCreateFailedAlert(_ error: Error) {
+        let alert = UIAlertController(
+            title: "전공 생성 실패",
+            message: error.localizedDescription,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "확인", style: .default))
+        present(alert, animated: true)
+    }
 }
 
 extension WriteViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
@@ -782,16 +940,24 @@ extension WriteViewController: UITableViewDataSource, UITableViewDelegate, UITex
 
     func textFieldDidEndEditing(_ textField: UITextField) {
         if textField === majorTextField {
-            majorDropdownTableView.isHidden = true
-            majorDropdownHeightConstraint?.update(offset: 0)
-            view.layoutIfNeeded()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if self.isSelectingMajorSuggestion { return }
+                self.majorDropdownTableView.isHidden = true
+                self.majorDropdownHeightConstraint?.update(offset: 0)
+                self.view.layoutIfNeeded()
+            }
             return
         }
 
         if textField === placeTextField.textFieldRef {
-            placeDropdownTableView.isHidden = true
-            placeDropdownHeightConstraint?.update(offset: 0)
-            view.layoutIfNeeded()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if self.isSelectingPlaceSuggestion { return }
+                self.placeAutoCompleteContainerView.isHidden = true
+                self.placeDropdownHeightConstraint?.update(offset: 0)
+                self.view.layoutIfNeeded()
+            }
         }
     }
 
@@ -802,7 +968,7 @@ extension WriteViewController: UITableViewDataSource, UITableViewDelegate, UITex
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if tableView === majorDropdownTableView {
-            return filteredMajors.count
+            return filteredMajors.count + (majorCreateCandidateName == nil ? 0 : 1)
         }
         if tableView === placeDropdownTableView {
             return placeResults.count
@@ -812,52 +978,102 @@ extension WriteViewController: UITableViewDataSource, UITableViewDelegate, UITex
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         if tableView === majorDropdownTableView {
-            let cell = tableView.dequeueReusableCell(withIdentifier: "MajorCell", for: indexPath)
-            var content = cell.defaultContentConfiguration()
-            content.text = filteredMajors[indexPath.row].name
-            content.textProperties.font = .style(.body3)
-            content.textProperties.color = .black700
-            cell.contentConfiguration = content
-            cell.selectionStyle = .none
-            return cell
+            if indexPath.row < filteredMajors.count {
+                guard let cell = tableView.dequeueReusableCell(
+                    withIdentifier: AutoCompleteCell.identifier,
+                    for: indexPath
+                ) as? AutoCompleteCell else {
+                    return UITableViewCell()
+                }
+                let keyword = majorTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                cell.configure(text: filteredMajors[indexPath.row].name, keyword: keyword)
+                return cell
+            } else {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "MajorCell", for: indexPath)
+                var content = cell.defaultContentConfiguration()
+                let candidate = majorCreateCandidateName ?? ""
+                content.text = "'\(candidate)' 전공 추가하기"
+                content.textProperties.font = .style(.body3)
+                content.textProperties.color = .orange500
+                cell.contentConfiguration = content
+                cell.selectionStyle = .none
+                return cell
+            }
         }
 
-        let cell = tableView.dequeueReusableCell(withIdentifier: "PlaceCell", for: indexPath)
+        guard let cell = tableView.dequeueReusableCell(
+            withIdentifier: AutoCompleteCell.identifier,
+            for: indexPath
+        ) as? AutoCompleteCell else {
+            return UITableViewCell()
+        }
+
         let place = placeResults[indexPath.row]
-        var content = cell.defaultContentConfiguration()
-        content.text = place.name
-        content.secondaryText = place.address
-        content.textProperties.font = .style(.body3)
-        content.textProperties.color = .black800
-        content.secondaryTextProperties.font = .style(.body4)
-        content.secondaryTextProperties.color = .black500
-        cell.contentConfiguration = content
-        cell.selectionStyle = .none
+        let keyword = placeTextField.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        cell.configure(text: place.displayAddress, keyword: keyword)
         return cell
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         if tableView === majorDropdownTableView {
-            let selected = filteredMajors[indexPath.row]
-            selectedMajors.append(.init(id: selected.id, name: selected.name))
-            majorTextField.text = ""
-            filterMajors(with: "")
+            isSelectingMajorSuggestion = false
+            if indexPath.row < filteredMajors.count {
+                let selected = filteredMajors[indexPath.row]
+                selectedMajors.append(.init(id: selected.id, name: selected.name))
+                majorTextField.text = ""
+                filterMajors(with: "")
+            } else if let candidate = majorCreateCandidateName {
+                createMajorCategoryIfNeeded(name: candidate)
+            }
             return
         }
 
         if tableView === placeDropdownTableView {
             let selected = placeResults[indexPath.row]
             isApplyingSelectedPlace = true
-            selectedPlace = selected
-            placeTextField.setText(selected.name)
+            isSelectingPlaceSuggestion = false
+            selectedPlace = nil
+            placeTextField.setText(selected.displayAddress)
             isApplyingSelectedPlace = false
             placeTextField.textFieldRef.resignFirstResponder()
             placeResults = []
-            placeDropdownTableView.reloadData()
-            placeDropdownTableView.isHidden = true
-            placeDropdownHeightConstraint?.update(offset: 0)
-            view.layoutIfNeeded()
+            updatePlaceAutoCompleteUI()
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let resolved = try await self.resolvePlace(from: selected.completion)
+                    self.selectedPlace = resolved
+                } catch {
+                    self.selectedPlace = nil
+                }
+            }
         }
+    }
+
+    func tableView(_ tableView: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
+        if tableView === majorDropdownTableView {
+            isSelectingMajorSuggestion = true
+        }
+        if tableView === placeDropdownTableView {
+            isSelectingPlaceSuggestion = true
+        }
+        return indexPath
+    }
+}
+
+extension WriteViewController: MKLocalSearchCompleterDelegate {
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        guard tipType == .location else { return }
+        placeResults = Array(completer.results.prefix(8)).map {
+            PlaceAutoCompleteItem(title: $0.title, subtitle: $0.subtitle, completion: $0)
+        }
+        updatePlaceAutoCompleteUI()
+    }
+
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: any Error) {
+        guard tipType == .location else { return }
+        placeResults = []
+        updatePlaceAutoCompleteUI()
     }
 }
 

@@ -3,11 +3,13 @@ import Moya
 
 protocol TipServicing {
     func listPlaces(category: String?) async throws -> [PlaceListResponseItem]
+    func listPlacePosts(placeID: String, page: Int?) async throws -> [SharePost]
     func listTips(category: String?, page: Int?, search: String?) async throws -> [SharePost]
     func listMajorPosts(majorID: String?, page: Int?, search: String?) async throws -> [SharePost]
     func tipDetail(id: String) async throws -> SharePost
     func majorDetail(id: String) async throws -> SharePost
     func majors() async throws -> [MajorCategory]
+    func createMajorCategory(name: String) async throws -> MajorCategory
     func popularMajors() async throws -> [PopularMajorTag]
     func uploadImage(data: Data, fileName: String, mimeType: String) async throws -> String
     func createPlace(request: CreatePlaceRequest) async throws -> CreatePlaceResponse
@@ -46,6 +48,34 @@ final class TipService: TipServicing {
                     } catch {
                         continuation.resume(throwing: error)
                     }
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func listPlacePosts(placeID: String, page: Int?) async throws -> [SharePost] {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.placePosts(placeID: placeID, page: page)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoder = JSONDecoder()
+                        let posts: [SharePost]
+
+                        if let paged = try? decoder.decode(TipListPageResponse.self, from: filteredResponse.data) {
+                            posts = paged.results.map(Self.mapListItemToSharePost)
+                        } else {
+                            let decoded = try decoder.decode([TipListResponseItem].self, from: filteredResponse.data)
+                            posts = decoded.map(Self.mapListItemToSharePost)
+                        }
+                        continuation.resume(returning: posts)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
                 case .failure(let error):
                     continuation.resume(throwing: error)
                 }
@@ -158,6 +188,27 @@ final class TipService: TipServicing {
                     do {
                         let filteredResponse = try response.filterSuccessfulStatusCodes()
                         let decoded = try JSONDecoder().decode([MajorCategory].self, from: filteredResponse.data)
+                        continuation.resume(returning: decoded)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func createMajorCategory(name: String) async throws -> MajorCategory {
+        let request = CreateMajorCategoryRequest(name: name)
+        return try await withCheckedThrowingContinuation { continuation in
+            provider.request(.createMajorCategory(request)) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decoded = try JSONDecoder().decode(MajorCategory.self, from: filteredResponse.data)
                         continuation.resume(returning: decoded)
                     } catch {
                         continuation.resume(throwing: error)

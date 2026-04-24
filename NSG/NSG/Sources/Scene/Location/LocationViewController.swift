@@ -96,6 +96,16 @@ final class LocationViewController: UIViewController {
         }
     }
 
+    private struct SearchAutoCompleteItem {
+        let title: String
+        let subtitle: String
+        let completion: MKLocalSearchCompletion
+
+        var displayText: String {
+            subtitle.isEmpty ? title : "\(title) \(subtitle)"
+        }
+    }
+
 
     private let tipService: TipServicing
     private let locationManager = CLLocationManager()
@@ -105,15 +115,19 @@ final class LocationViewController: UIViewController {
     private var initialLocationDeadline: Date?
     private var isManualLocationRequest = false
     private var currentAnnotation: PlaceAnnotation?
+    private var searchPreviewAnnotation: MKPointAnnotation?
     private var allPlaces: [PlaceListResponseItem] = []
     private var filteredPlaces: [PlaceListResponseItem] = []
     private var selectedPlacePosts: [SharePost] = []
+    private let searchCompleter = MKLocalSearchCompleter()
+    private var searchAutoCompleteResults: [SearchAutoCompleteItem] = []
     private var placeListTask: Task<Void, Never>?
     private var placePostTask: Task<Void, Never>?
 
     private var bottomSheetHeightConstraint: Constraint?
     private var bottomSheetBottomConstraint: Constraint?
     private var routeButtonBottomConstraint: Constraint?
+    private var searchAutoCompleteHeightConstraint: Constraint?
 
     private let mapView = MKMapView().then {
         $0.showsCompass = false
@@ -143,6 +157,20 @@ final class LocationViewController: UIViewController {
             string: "키워드 혹은 찾고싶은 걸 검색해보세요.",
             attributes: [.foregroundColor: UIColor.black400]
         )
+    }
+
+    private let searchAutoCompleteContainerView = UIView().then {
+        $0.backgroundColor = .black50
+        $0.layer.cornerRadius = 8
+        $0.isHidden = true
+    }
+
+    private let searchAutoCompleteTableView = UITableView(frame: .zero, style: .plain).then {
+        $0.backgroundColor = .clear
+        $0.separatorStyle = .none
+        $0.rowHeight = 36
+        $0.showsVerticalScrollIndicator = true
+        $0.isScrollEnabled = true
     }
 
     private let categoryStackView = UIStackView().then {
@@ -268,6 +296,12 @@ final class LocationViewController: UIViewController {
         fetchPlaces()
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // 자동완성은 카테고리/맵 마커 위로 항상 오버레이되도록 최상단 유지
+        view.bringSubviewToFront(searchAutoCompleteContainerView)
+    }
+
     private func setupUI() {
         view.backgroundColor = .background
         mapView.delegate = self
@@ -275,10 +309,18 @@ final class LocationViewController: UIViewController {
         postsCollectionView.delegate = self
         postsCollectionView.dataSource = self
         postsCollectionView.register(LatestPostCell.self, forCellWithReuseIdentifier: LatestPostCell.identifier)
+        searchAutoCompleteTableView.dataSource = self
+        searchAutoCompleteTableView.delegate = self
+        searchAutoCompleteTableView.register(AutoCompleteCell.self, forCellReuseIdentifier: AutoCompleteCell.identifier)
+        searchCompleter.delegate = self
+        searchCompleter.resultTypes = [.address, .pointOfInterest, .query]
+        searchTextField.addTarget(self, action: #selector(didChangeSearchTextField), for: .editingChanged)
+        searchAutoCompleteContainerView.layer.zPosition = 999
 
         view.addSubview(mapView)
         view.addSubview(dimView)
         view.addSubview(searchContainerView)
+        view.addSubview(searchAutoCompleteContainerView)
         view.addSubview(categoryStackView)
         view.addSubview(writeButton)
         view.addSubview(myLocationButton)
@@ -286,6 +328,7 @@ final class LocationViewController: UIViewController {
         view.addSubview(bottomSheetView)
 
         searchContainerView.addSubview(searchTextField)
+        searchAutoCompleteContainerView.addSubview(searchAutoCompleteTableView)
         categoryButtons.forEach { categoryStackView.addArrangedSubview($0) }
 
         [
@@ -315,6 +358,16 @@ final class LocationViewController: UIViewController {
 
         searchTextField.snp.makeConstraints {
             $0.edges.equalToSuperview().inset(UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12))
+        }
+
+        searchAutoCompleteContainerView.snp.makeConstraints {
+            $0.top.equalTo(searchContainerView.snp.bottom).offset(8)
+            $0.leading.trailing.equalTo(searchContainerView)
+            searchAutoCompleteHeightConstraint = $0.height.equalTo(0).constraint
+        }
+
+        searchAutoCompleteTableView.snp.makeConstraints {
+            $0.edges.equalToSuperview().inset(10)
         }
 
         categoryStackView.snp.makeConstraints {
@@ -479,6 +532,10 @@ final class LocationViewController: UIViewController {
         let keyword = searchTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if keyword.isEmpty {
             filteredPlaces = allPlaces
+            if let preview = searchPreviewAnnotation {
+                mapView.removeAnnotation(preview)
+                searchPreviewAnnotation = nil
+            }
         } else {
             filteredPlaces = allPlaces.filter {
                 $0.title.localizedCaseInsensitiveContains(keyword)
@@ -530,6 +587,79 @@ final class LocationViewController: UIViewController {
     private func didTapDimView() {
         hideBottomSheet()
         mapView.selectedAnnotations.forEach { mapView.deselectAnnotation($0, animated: true) }
+    }
+
+    @objc
+    private func didChangeSearchTextField() {
+        let keyword = searchTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        applyPlaceSearchFilter()
+
+        guard !keyword.isEmpty else {
+            searchAutoCompleteResults = []
+            updateSearchAutoCompleteUI()
+            return
+        }
+
+        searchCompleter.region = mapView.region
+        searchCompleter.queryFragment = keyword
+    }
+
+    private func updateSearchAutoCompleteUI() {
+        searchAutoCompleteTableView.reloadData()
+        let shouldShow = searchTextField.isFirstResponder
+            && !(searchTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            && !searchAutoCompleteResults.isEmpty
+        searchAutoCompleteContainerView.isHidden = !shouldShow
+        if shouldShow {
+            view.bringSubviewToFront(searchAutoCompleteContainerView)
+        }
+        searchAutoCompleteHeightConstraint?.update(offset: shouldShow ? min(CGFloat(searchAutoCompleteResults.count) * 36 + 20, 150) : 0)
+        view.layoutIfNeeded()
+    }
+
+    private func searchMapItem(with completion: MKLocalSearchCompletion) {
+        Task { [weak self] in
+            guard let self else { return }
+
+            let request = MKLocalSearch.Request(completion: completion)
+            request.resultTypes = [.address, .pointOfInterest]
+
+            do {
+                let response = try await MKLocalSearch(request: request).start()
+                guard let first = response.mapItems.first else { return }
+
+                if let matched = filteredPlaces.first(where: {
+                    $0.title.localizedCaseInsensitiveContains(completion.title)
+                    || completion.title.localizedCaseInsensitiveContains($0.title)
+                }) {
+                    let matchedAnnotation = mapView.annotations.compactMap { $0 as? PlaceAnnotation }.first {
+                        $0.place.title == matched.title
+                        && abs($0.place.latitude - matched.latitude) < 0.0001
+                        && abs($0.place.longitude - matched.longitude) < 0.0001
+                    }
+                    if let matchedAnnotation {
+                        selectPlace(annotation: matchedAnnotation, moveToCenter: true)
+                    }
+                    return
+                }
+
+                if let preview = searchPreviewAnnotation {
+                    mapView.removeAnnotation(preview)
+                }
+
+                let preview = MKPointAnnotation()
+                preview.title = first.name ?? completion.title
+                preview.subtitle = first.placemark.title ?? completion.subtitle
+                preview.coordinate = first.placemark.coordinate
+                mapView.addAnnotation(preview)
+                searchPreviewAnnotation = preview
+                let region = MKCoordinateRegion(center: preview.coordinate, latitudinalMeters: 900, longitudinalMeters: 900)
+                mapView.setRegion(region, animated: true)
+                hideBottomSheet()
+            } catch {
+                // 검색 실패 시에는 기존 필터 결과만 유지
+            }
+        }
     }
 
     private func hideBottomSheet() {
@@ -679,14 +809,67 @@ extension LocationViewController: CLLocationManagerDelegate {
 }
 
 extension LocationViewController: UITextFieldDelegate {
+    func textFieldDidBeginEditing(_ textField: UITextField) {
+        didChangeSearchTextField()
+    }
+
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         textField.resignFirstResponder()
         applyPlaceSearchFilter()
+        searchAutoCompleteContainerView.isHidden = true
+        searchAutoCompleteHeightConstraint?.update(offset: 0)
         return true
     }
 
     func textFieldDidEndEditing(_ textField: UITextField) {
         applyPlaceSearchFilter()
+        searchAutoCompleteContainerView.isHidden = true
+        searchAutoCompleteHeightConstraint?.update(offset: 0)
+    }
+}
+
+extension LocationViewController: UITableViewDataSource, UITableViewDelegate {
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        searchAutoCompleteResults.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(
+            withIdentifier: AutoCompleteCell.identifier,
+            for: indexPath
+        ) as? AutoCompleteCell else {
+            return UITableViewCell()
+        }
+
+        let item = searchAutoCompleteResults[indexPath.row]
+        let keyword = searchTextField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        cell.configure(text: item.displayText, keyword: keyword)
+        return cell
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        guard indexPath.row < searchAutoCompleteResults.count else { return }
+        let selected = searchAutoCompleteResults[indexPath.row]
+        searchTextField.text = selected.displayText
+        applyPlaceSearchFilter()
+        searchAutoCompleteResults = []
+        updateSearchAutoCompleteUI()
+        searchTextField.resignFirstResponder()
+        searchMapItem(with: selected.completion)
+    }
+}
+
+extension LocationViewController: MKLocalSearchCompleterDelegate {
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        searchAutoCompleteResults = Array(completer.results.prefix(8)).map {
+            SearchAutoCompleteItem(title: $0.title, subtitle: $0.subtitle, completion: $0)
+        }
+        updateSearchAutoCompleteUI()
+    }
+
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: any Error) {
+        searchAutoCompleteResults = []
+        updateSearchAutoCompleteUI()
     }
 }
 

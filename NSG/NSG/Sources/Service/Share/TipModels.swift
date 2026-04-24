@@ -5,6 +5,10 @@ struct MajorCategory: Decodable, Equatable {
     let name: String
 }
 
+struct CreateMajorCategoryRequest: Encodable {
+    let name: String
+}
+
 struct PopularMajorTag: Decodable, Equatable {
     let id: String
     let name: String

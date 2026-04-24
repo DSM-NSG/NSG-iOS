@@ -4,11 +4,13 @@ import Alamofire
 
 enum TipTarget {
     case places(category: String?)
+    case placePosts(placeID: String, page: Int?)
     case list(category: String?, page: Int?, search: String?)
     case majorPosts(majorID: String?, page: Int?, search: String?)
     case detail(id: String)
     case majorDetail(id: String)
     case majors
+    case createMajorCategory(CreateMajorCategoryRequest)
     case popularMajors
     case uploadImage(data: Data, fileName: String, mimeType: String)
     case createPlace(CreatePlaceRequest)
@@ -29,6 +31,8 @@ extension TipTarget: TargetType {
         switch self {
         case .places:
             return "/"
+        case .placePosts(let placeID, _):
+            return "/\(placeID)/posts/"
         case .list:
             return "/posts/tips/"
         case .majorPosts:
@@ -39,6 +43,8 @@ extension TipTarget: TargetType {
             return "/posts/major/\(id)/"
         case .majors:
             return "/majors/"
+        case .createMajorCategory:
+            return "/majors/create/"
         case .popularMajors:
             return "/majors/popular/"
         case .uploadImage:
@@ -60,9 +66,9 @@ extension TipTarget: TargetType {
 
     var method: Moya.Method {
         switch self {
-        case .list, .majorPosts, .detail, .majorDetail, .majors, .popularMajors, .places:
+        case .list, .majorPosts, .detail, .majorDetail, .majors, .popularMajors, .places, .placePosts:
             return Moya.Method.get
-        case .create, .createMajor, .toggleLike, .uploadImage, .createPlace:
+        case .create, .createMajor, .createMajorCategory, .toggleLike, .uploadImage, .createPlace:
             return Moya.Method.post
         case .deleteTip, .deleteMajor:
             return Moya.Method.delete
@@ -75,6 +81,12 @@ extension TipTarget: TargetType {
             var params: [String: Any] = [:]
             if let category, !category.isEmpty {
                 params["category"] = category
+            }
+            return .requestParameters(parameters: params, encoding: URLEncoding.queryString)
+        case .placePosts(_, let page):
+            var params: [String: Any] = [:]
+            if let page {
+                params["page"] = page
             }
             return .requestParameters(parameters: params, encoding: URLEncoding.queryString)
         case .list(let category, let page, let search):
@@ -104,6 +116,8 @@ extension TipTarget: TargetType {
 
         case .detail, .majorDetail, .majors, .popularMajors:
             return .requestPlain
+        case .createMajorCategory(let request):
+            return .requestJSONEncodable(request)
         case .uploadImage(let data, let fileName, let mimeType):
             let multipartData = MultipartFormData(
                 provider: .data(data),
@@ -133,6 +147,10 @@ extension TipTarget: TargetType {
         }
 
         if case .createMajor = self {
+            headers["Content-Type"] = "application/json"
+        }
+
+        if case .createMajorCategory = self {
             headers["Content-Type"] = "application/json"
         }
 
