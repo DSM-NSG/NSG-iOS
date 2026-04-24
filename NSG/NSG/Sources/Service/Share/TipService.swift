@@ -122,8 +122,8 @@ final class TipService: TipServicing {
                         let decoder = JSONDecoder()
                         let posts: [SharePost]
 
-                        if let paged = try? decoder.decode(TipListPageResponse.self, from: filteredResponse.data) {
-                            posts = paged.results.map(Self.mapListItemToSharePost)
+                        if let paged = try? decoder.decode(MajorPostListPageResponse.self, from: filteredResponse.data) {
+                            posts = paged.results.map(Self.mapMajorListItemToSharePost)
                         } else {
                             let decoded = try decoder.decode([MajorPostListResponseItem].self, from: filteredResponse.data)
                             posts = decoded.map(Self.mapMajorListItemToSharePost)

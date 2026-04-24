@@ -15,10 +15,6 @@ final class MajorViewController: UIViewController {
         case searchResult
     }
 
-    private let fallbackTrendingTopics = [
-        "FE", "Flutter", "iOS", "Design", "BE",
-        "GO", "HOME", "tired", "why", "bomb"
-    ]
     private var trendingTopics: [String] = []
     private var allMajorPosts: [SharePost] = []
     private var popularPosts: [SharePost] = []
@@ -169,12 +165,16 @@ final class MajorViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        trendingTopics = fallbackTrendingTopics
         addView()
         setLayout()
         configureUI()
         bindContent()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
         fetchPopularMajorTags()
+        fetchMajorPosts()
     }
 
     override func viewDidLayoutSubviews() {
@@ -342,7 +342,6 @@ final class MajorViewController: UIViewController {
         filteredPopularPosts = popularPosts
         filteredLatestPosts = latestPosts
         apply(mode: .home)
-        fetchMajorPosts()
     }
 
     private func bindTrendTopics() {
@@ -367,12 +366,11 @@ final class MajorViewController: UIViewController {
             do {
                 let majors = try await tipService.popularMajors()
                 let majorNames = majors.map(\.name)
-                guard !majorNames.isEmpty else { return }
-
                 trendingTopics = Array(majorNames.prefix(10))
                 bindTrendTopics()
             } catch {
-                // 실패 시에는 기본 트렌드 토픽을 유지한다.
+                trendingTopics = []
+                bindTrendTopics()
             }
         }
     }

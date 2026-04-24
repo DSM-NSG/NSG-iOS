@@ -14,7 +14,7 @@ struct PopularMajorTag: Decodable, Equatable {
     let name: String
     let postCount: Int
     let totalLikes: Int
-    let score: Int
+    let score: Double
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -306,6 +306,13 @@ struct TipListPageResponse: Decodable {
     let next: String?
     let previous: String?
     let results: [TipListResponseItem]
+}
+
+struct MajorPostListPageResponse: Decodable {
+    let count: Int
+    let next: String?
+    let previous: String?
+    let results: [MajorPostListResponseItem]
 }
 
 struct TipLikeToggleResponse: Decodable {
