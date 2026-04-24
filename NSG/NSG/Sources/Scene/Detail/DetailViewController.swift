@@ -456,8 +456,8 @@ final class DetailViewController: UIViewController {
     private func didTapDeleteButton() {
         guard !isDeleteRequesting else { return }
         let popupView = NSGPopupView(
-            title: "게시글 삭제",
-            message: "정말 이 게시글을 삭제하시겠습니까?",
+            title: "게ㅌ시글 삭제",
+            message: "해당 글을 삭제할 수 있습니다.\n단, 삭제 시 되돌릴 수 없습니다.\n그래도 게시글을 삭제 하시겠습니까?",
             cancelButtonTitle: "취소",
             confirmButtonTitle: "삭제",
             confirmAction: { [weak self] in
@@ -482,8 +482,8 @@ final class DetailViewController: UIViewController {
         let popupView = NSGPopupView(
             title: popupTitle,
             message: popupMessage,
-            cancelButtonTitle: "실명공개",
-            confirmButtonTitle: "익명작성",
+            cancelButtonTitle: "아니요",
+            confirmButtonTitle: "네",
             cancelAction: { [weak self] in
                 self?.submitComment(commentText, isAnonymous: false)
             },

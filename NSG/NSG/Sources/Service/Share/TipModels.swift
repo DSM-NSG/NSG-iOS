@@ -92,6 +92,7 @@ struct MajorDetailResponse: Decodable {
     let likeCount: Int
     let isLiked: Bool
     let images: [Image]
+    let comments: [TipDetailResponse.Comment]
     let commentCount: Int
     let createdAt: String
 
@@ -132,13 +133,15 @@ struct MajorDetailResponse: Decodable {
             majors = []
         }
 
+        comments = (try? container.decode([TipDetailResponse.Comment].self, forKey: .comments)) ?? []
+
         if let commentsCount = try? container.decode(Int.self, forKey: .comments) {
             commentCount = commentsCount
         } else if let commentsString = try? container.decode(String.self, forKey: .comments),
                   let commentsCount = Int(commentsString) {
             commentCount = commentsCount
-        } else if let commentsArray = try? container.decode([TipDetailResponse.Comment].self, forKey: .comments) {
-            commentCount = commentsArray.count
+        } else if !comments.isEmpty {
+            commentCount = comments.count
         } else {
             commentCount = 0
         }
@@ -152,6 +155,7 @@ struct UploadImageResponse: Decodable {
 struct TipAuthor: Decodable {
     let id: String?
     let grade: Int?
+    let cohort: Int?
     let classNum: Int?
     let num: Int?
     let name: String?
@@ -161,6 +165,7 @@ struct TipAuthor: Decodable {
         case id
         case authorID = "author_id"
         case grade
+        case cohort
         case classNum = "class_num"
         case num
         case name
@@ -172,6 +177,7 @@ struct TipAuthor: Decodable {
         id = (try? container.decode(String.self, forKey: .id))
             ?? (try? container.decode(String.self, forKey: .authorID))
         grade = try? container.decode(Int.self, forKey: .grade)
+        cohort = try? container.decode(Int.self, forKey: .cohort)
         classNum = try? container.decode(Int.self, forKey: .classNum)
         num = try? container.decode(Int.self, forKey: .num)
         name = try? container.decode(String.self, forKey: .name)
@@ -489,6 +495,9 @@ private extension KeyedDecodingContainer {
                 return "익명"
             }
             let baseName = authorObject.name ?? "익명"
+            if let cohort = authorObject.cohort {
+                return "\(baseName) \(cohort)기"
+            }
             if let grade = authorObject.grade {
                 return "\(baseName) \(grade)기"
             }

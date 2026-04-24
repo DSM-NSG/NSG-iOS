@@ -14,6 +14,7 @@ enum AuthServiceError: LocalizedError {
 
 protocol AuthServicing {
     func login(accountID: String, password: String) async throws -> LoginResponse
+    func me() async throws -> MyProfileResponse
 }
 
 @MainActor
@@ -49,6 +50,25 @@ final class AuthService: AuthServicing {
                         continuation.resume(throwing: error)
                     }
 
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    func me() async throws -> MyProfileResponse {
+        try await withCheckedThrowingContinuation { continuation in
+            provider.request(.me) { result in
+                switch result {
+                case .success(let response):
+                    do {
+                        let filteredResponse = try response.filterSuccessfulStatusCodes()
+                        let decodedResponse = try JSONDecoder().decode(MyProfileResponse.self, from: filteredResponse.data)
+                        continuation.resume(returning: decodedResponse)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
                 case .failure(let error):
                     continuation.resume(throwing: error)
                 }

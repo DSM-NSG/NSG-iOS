@@ -479,14 +479,32 @@ final class TipService: TipServicing {
     }
 
     private static func mapMajorDetailToSharePost(_ detail: MajorDetailResponse) -> SharePost {
-        SharePost(
+        let flattenedComments: [ShareComment] = detail.comments.flatMap { comment in
+            let baseComment = ShareComment(
+                id: comment.id,
+                author: comment.author,
+                content: comment.content,
+                isReply: false
+            )
+            let replies = comment.replies.map {
+                ShareComment(
+                    id: $0.id,
+                    author: $0.author,
+                    content: $0.content,
+                    isReply: true
+                )
+            }
+            return [baseComment] + replies
+        }
+
+        return SharePost(
             id: detail.id,
             author: detail.author,
             title: detail.title,
             content: detail.body,
             category: detail.majors.first ?? "전공",
             likeCount: detail.likeCount,
-            commentCount: detail.commentCount,
+            commentCount: detail.commentCount == 0 ? flattenedComments.count : detail.commentCount,
             hasImages: !detail.images.isEmpty,
             createdAt: detail.createdAt,
             isAnonymous: detail.isAnonymous,
@@ -494,7 +512,7 @@ final class TipService: TipServicing {
             imageURLs: detail.images
                 .sorted { $0.orderIndex < $1.orderIndex }
                 .map(\.url),
-            comments: [],
+            comments: flattenedComments,
             isMajorPost: true
         )
     }

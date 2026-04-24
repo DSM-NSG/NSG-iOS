@@ -9,6 +9,7 @@ import SnapKit
 import Then
 
 final class MyViewController: UIViewController {
+    private let authService: AuthServicing
 
     private let profileCardView = UIView().then {
         $0.backgroundColor = .black50
@@ -42,12 +43,26 @@ final class MyViewController: UIViewController {
         title: "회원탈퇴"
     )
 
+    init(authService: AuthServicing = AuthService.shared) {
+        self.authService = authService
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
         addView()
         setLayout()
         configureUI()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        fetchMyProfile()
     }
 
     private func addView() {
@@ -113,7 +128,35 @@ final class MyViewController: UIViewController {
         }
 
         nameLabel.text = user.name
-        classLabel.text = "\(user.grade)기"
+        classLabel.text = "\(user.cohort ?? user.grade)기"
+    }
+
+    private func fetchMyProfile() {
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let profile = try await authService.me()
+                let existing = AuthTokenStore.shared.currentUser
+                let mergedUser = LoginUser(
+                    id: profile.userID,
+                    accountID: existing?.accountID ?? "",
+                    name: existing?.name ?? "",
+                    grade: profile.grade,
+                    classNum: profile.classNum,
+                    num: profile.num,
+                    cohort: profile.cohort
+                )
+                AuthTokenStore.shared.saveCurrentUser(mergedUser)
+                await MainActor.run {
+                    self.updateUserInfo()
+                }
+            } catch {
+                await MainActor.run {
+                    self.updateUserInfo()
+                }
+            }
+        }
     }
 
     @objc

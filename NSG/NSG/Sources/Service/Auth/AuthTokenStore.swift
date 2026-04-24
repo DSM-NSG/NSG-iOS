@@ -47,6 +47,10 @@ final class AuthTokenStore {
 
     func saveSession(accessToken: String, refreshToken: String, user: LoginUser) {
         save(accessToken: accessToken, refreshToken: refreshToken)
+        saveCurrentUser(user)
+    }
+
+    func saveCurrentUser(_ user: LoginUser) {
         if let userData = try? JSONEncoder().encode(user) {
             userDefaults.set(userData, forKey: Key.user)
         }

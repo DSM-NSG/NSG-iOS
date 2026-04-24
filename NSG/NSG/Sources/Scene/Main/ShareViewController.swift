@@ -16,6 +16,7 @@ final class ShareViewController: UIViewController {
     private var latestPosts: [SharePost] = []
     private var isLikeRequestingPostIDs: Set<String> = []
     private let tipService: TipServicing
+    private let authService: AuthServicing
 
     private let scrollView = UIScrollView().then {
         $0.showsVerticalScrollIndicator = false
@@ -113,13 +114,14 @@ final class ShareViewController: UIViewController {
 
     private var latestCollectionHeightConstraint: Constraint?
 
-    init(tipService: TipServicing) {
+    init(tipService: TipServicing, authService: AuthServicing) {
         self.tipService = tipService
+        self.authService = authService
         super.init(nibName: nil, bundle: nil)
     }
 
     convenience init() {
-        self.init(tipService: TipService.shared)
+        self.init(tipService: TipService.shared, authService: AuthService.shared)
     }
 
     required init?(coder: NSCoder) {
@@ -137,6 +139,7 @@ final class ShareViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        fetchMyProfile()
         fetchTips()
     }
 
@@ -275,7 +278,35 @@ final class ShareViewController: UIViewController {
         }
 
         nameLabel.text = user.name
-        classLabel.text = "\(user.grade)기"
+        classLabel.text = "\(user.cohort ?? user.grade)기"
+    }
+
+    private func fetchMyProfile() {
+        Task { [weak self] in
+            guard let self else { return }
+
+            do {
+                let profile = try await authService.me()
+                let existing = AuthTokenStore.shared.currentUser
+                let mergedUser = LoginUser(
+                    id: profile.userID,
+                    accountID: existing?.accountID ?? "",
+                    name: existing?.name ?? "",
+                    grade: profile.grade,
+                    classNum: profile.classNum,
+                    num: profile.num,
+                    cohort: profile.cohort
+                )
+                AuthTokenStore.shared.saveCurrentUser(mergedUser)
+                await MainActor.run {
+                    self.updateUserInfo()
+                }
+            } catch {
+                await MainActor.run {
+                    self.updateUserInfo()
+                }
+            }
+        }
     }
 
     private func fetchTips() {

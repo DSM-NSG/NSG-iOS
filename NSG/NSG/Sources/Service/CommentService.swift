@@ -46,7 +46,9 @@ struct CreateCommentResponse: Decodable {
                 return
             }
             let baseName = authorObject.name ?? "익명"
-            if let grade = authorObject.grade {
+            if let cohort = authorObject.cohort {
+                author = "\(baseName) \(cohort)기"
+            } else if let grade = authorObject.grade {
                 author = "\(baseName) \(grade)기"
             } else {
                 author = baseName
